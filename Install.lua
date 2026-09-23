@@ -1,7 +1,10 @@
 -- GlobalDeltaScript / GlobalControler — установка одной строкой (Delta, Roblox)
 -- Не хранит личные данные в GitHub: Config/Profiles пишутся только writefile на устройство.
 
-local RAW = "https://raw.githubusercontent.com/N1V1LON/GlobalDeltaScript/main/Scripts/GlobalControler.lua"
+local SOURCES = {
+	"https://raw.githubusercontent.com/N1V1LON/GlobalDeltaScript/main/Scripts/GlobalControler.lua",
+	"https://cdn.jsdelivr.net/gh/N1V1LON/GlobalDeltaScript@main/Scripts/GlobalControler.lua",
+}
 
 local function withCacheBust(url)
 	local t = tostring(math.floor(os.time()))
@@ -24,12 +27,15 @@ local function httpGet(url)
 	return nil
 end
 
-local src = httpGet(withCacheBust(RAW))
-if not src then
-	src = httpGet(RAW)
+local src
+for _, base in ipairs(SOURCES) do
+	src = httpGet(withCacheBust(base)) or httpGet(base)
+	if src then
+		break
+	end
 end
 if not src then
-	error("[Install] не удалось скачать GlobalControler.lua: " .. tostring(RAW))
+	error("[Install] не удалось скачать GlobalControler.lua")
 end
 
 local chunk, err = loadstring(src, "=GlobalControler")
