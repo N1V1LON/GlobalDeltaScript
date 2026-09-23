@@ -19,7 +19,7 @@ function SpeedWindow.Name()
 end
 
 function SpeedWindow.Desc()
-	return Str("speedDesc", "Ползунок + ON/OFF")
+	return Str("speedDesc", "Физ-скорость без WalkSpeed")
 end
 
 local lastSpeed = nil

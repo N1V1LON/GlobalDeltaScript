@@ -15,9 +15,10 @@ local flags = {
 }
 local keepTask = nil
 local hooksReady = false
-local lastJumpAt = 0
 local lockUntil = 0
 local lockCF = nil
+local baseWalk = 16
+local baseJump = 50
 
 function SpoofingLogic.getHumanoid()
 	local char = LocalPlayer.Character
@@ -81,6 +82,20 @@ local function spoofedBase(value, base)
 	return base
 end
 
+local function onHumanoid(self, key)
+	if not enabled or typeof(self) ~= "Instance" then
+		return nil
+	end
+	if key ~= "WalkSpeed" and key ~= "JumpPower" then
+		return nil
+	end
+	local h = SpoofingLogic.getHumanoid()
+	if not h or self ~= h then
+		return nil
+	end
+	return key
+end
+
 local function installHooks()
 	if hooksReady then
 		return
@@ -90,27 +105,59 @@ local function installHooks()
 		return
 	end
 	pcall(function()
-		local old
-		old = hookmetamethod(game, "__index", newcclosure(function(self, key)
-			if enabled and (key == "WalkSpeed" or key == "JumpPower") and typeof(self) == "Instance" then
-				local h = SpoofingLogic.getHumanoid()
-				if h and self == h then
-					local real = old(self, key)
-					if key == "WalkSpeed" and flags.speed then
-						local SL = env.SpeedLogic
-						if SL and SL.isEnabled and SL.isEnabled() then
-							return real
-						end
-						return spoofedBase(real, 16)
-					end
-					if key == "JumpPower" and flags.jump then
-						return spoofedBase(real, 50)
-					end
+		local oldIndex
+		oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+			local field = onHumanoid(self, key)
+			if field then
+				if field == "WalkSpeed" and flags.speed then
+					return spoofedBase(oldIndex(self, key), baseWalk)
+				end
+				if field == "JumpPower" and flags.jump then
+					return spoofedBase(oldIndex(self, key), baseJump)
 				end
 			end
-			return old(self, key)
+			return oldIndex(self, key)
 		end))
 	end)
+	pcall(function()
+		local oldNew
+		oldNew = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
+			local field = onHumanoid(self, key)
+			if field == "WalkSpeed" and flags.speed then
+				if type(value) == "number" and math.abs(value - baseWalk) > 0.01 then
+					return oldNew(self, key, baseWalk)
+				end
+			elseif field == "JumpPower" and flags.jump then
+				if type(value) == "number" and math.abs(value - baseJump) > 0.01 then
+					return oldNew(self, key, baseJump)
+				end
+			end
+			return oldNew(self, key, value)
+		end))
+	end)
+end
+
+local function noteBase()
+	local h = SpoofingLogic.getHumanoid()
+	if not h then
+		return
+	end
+	local SL = env.SpeedLogic
+	local speedOn = SL and SL.isEnabled and SL.isEnabled()
+	if flags.speed and not speedOn then
+		local candidate = h.WalkSpeed
+		if type(candidate) == "number" and candidate > 1 then
+			baseWalk = candidate
+		end
+	end
+	local JL = env.JumpLogic
+	local jumpOn = JL and JL.isEnabled and JL.isEnabled()
+	if flags.jump and not jumpOn then
+		local candidate = h.JumpPower
+		if type(candidate) == "number" and candidate > 1 then
+			baseJump = candidate
+		end
+	end
 end
 
 local function applySpeed()
@@ -122,11 +169,12 @@ local function applySpeed()
 	if not h then
 		return
 	end
-	if SL and SL.isEnabled and SL.isEnabled() then
-		local want = SL.getDesired and SL.getDesired()
-		if want and math.abs(h.WalkSpeed - want) > 0.001 then
-			h.WalkSpeed = want
-		end
+	local base = baseWalk
+	if SL and SL.getBaseSpeed then
+		base = SL.getBaseSpeed() or base
+	end
+	if math.abs(h.WalkSpeed - base) > 0.001 then
+		h.WalkSpeed = base
 	end
 end
 
@@ -134,16 +182,12 @@ local function applyJump()
 	if not flags.jump then
 		return
 	end
-	local JL = env.JumpLogic
 	local h = SpoofingLogic.getHumanoid()
 	if not h then
 		return
 	end
-	if JL and JL.isEnabled and JL.isEnabled() then
-		local want = JL.getPower and JL.getPower()
-		if want and math.abs(h.JumpPower - want) > 0.001 then
-			h.JumpPower = want
-		end
+	if math.abs(h.JumpPower - baseJump) > 0.001 then
+		h.JumpPower = baseJump
 	end
 end
 
@@ -165,6 +209,7 @@ local function startKeep()
 	end
 	keepTask = task.spawn(function()
 		while enabled do
+			pcall(noteBase)
 			pcall(applySpeed)
 			pcall(applyJump)
 			pcall(applyTp)
@@ -189,6 +234,11 @@ function SpoofingLogic.enable()
 	end
 	enabled = true
 	installHooks()
+	pcall(function()
+		noteBase()
+		applySpeed()
+		applyJump()
+	end)
 	startKeep()
 	return true
 end
@@ -211,7 +261,7 @@ end
 
 LocalPlayer.CharacterAdded:Connect(function()
 	if enabled then
-		task.wait(0.2)
+		task.wait(0.15)
 		startKeep()
 	end
 end)

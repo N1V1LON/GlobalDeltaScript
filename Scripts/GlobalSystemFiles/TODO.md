@@ -1,6 +1,7 @@
 # TODO
 
-## Сделано — V26.1.0R (релиз)
+## Сделано — V26.1.2B (beta)
+
 
 - [x] GlobalControler: синглтон, запускается первым, сам поднимает всё остальное
 - [x] Поиск Base (Scripts/) по кандидатам путей Delta
@@ -38,13 +39,16 @@
 - [x] V26.0.29D: **light-панели в A** — `isSolidPanel` больше не хардкодит только dark RGB; собирает panel-цвета (`bg/header/panel/panelAlt/btn`) из `THEMES.dark` + `THEMES.light` + текущих `Theme`/`ModuleTheme` (tol 8) — светлые секции/карточки/кнопки в модулях тоже гаснут; EMBEDDED не трогали (Apply только в GC)
 - [x] V26.0.30D: **Server → Spoofing + Players + FastHeal** — старый Anti-AFK (`ServerLogic`/`ServerWindow`) удалён; вкладка Server: **Spoofing** (`GetTable=Server`, pos 1, QuickToggle; 3 флага speed/jump/tp: keep-loop 0.08s + опц. `hookmetamethod` __index spoof WalkSpeed/JumpPower→base когда Speed/Jump выкл; wrap `TPLogic.teleportTo` → `noteTeleport` lock 1.2s) и **Players** (pos 2, QuickToggle; Highlight accent + Billboard name·dist·m·HP%, тумблеры dist/hp); вкладка Player: **FastHeal** (pos 5, QuickToggle; +HP/тик 1–50 из Config); STRINGS RU/EN; Config без ServerWindow; FALLBACK/LOAD_ORDER = 16; EMBEDDED 16; `luac` OK
 - [x] V26.1.0R: **релиз** — пользователь подтвердил на устройстве (Spoofing/Players/FastHeal работают); bump demo→release
+- [x] V26.1.1B: **speed/jump обход «не доверяй клиенту»** — Speed: BodyVelocity, Jump: AssemblyLinearVelocity.Y, Spoofing baseWalk/baseJump + __index; WalkSpeed/JumpPower всегда base; **Robux unlock — не делаем** (обход оплаты)
+- [x] V26.1.2B: **надёжнее speed/jump** — Speed: LinearVelocity+Attachment (World/Vector, XZ only) + Stepped; Jump: hold Y 0.25s на Stepped; Spoofing: + __newindex (non-base → base), noteBase не перетирает base при вкл Speed/Jump; EMBEDDED 16; `luac` OK
 
 ## Дальше
 
 - [ ] Тема light: проверить на устройстве, доработать контраст (0.29D — A на light; контраст текста/акцентов отдельно)
-- [ ] Spoofing/Players/FastHeal: проверить на устройстве (ESP billboard, флаги обхода, хил +HP/тик)
+- [ ] Spoofing/Players/FastHeal + physics speed/jump: проверить на устройстве (ESP, флаги, хил; сервер не должен видеть WalkSpeed/JumpPower)
+- [ ] Robux unlock покупок — **не делаем** (обход оплаты / ToS)
 - [ ] Иконки: путь в Config сейчас имя файла, нужен путь к Assets (getcustomasset)
-- [ ] Анти-чит обходы: ревизия TP-форса, speed keep (проверить в актуальных играх)
+- [ ] Анти-чит обходы: ревизия TP-форса; speed/jump LinearVelocity/hold — протестировать с серверной проверкой
 - [ ] Ещё демо-модуль (например, Noclip) для проверки позиционирования вкладок → частично: Noclip/Jump сделаны, Server добавлен
 - [ ] Diagnostics-скрипт (по образцу Test.lua из истории git) — грузится ли Base/Config
 - [ ] i18n: hub+карточки+основные подписи модулей EN есть; остатки: статусы ON/OFF внутри модулей, toast/логи

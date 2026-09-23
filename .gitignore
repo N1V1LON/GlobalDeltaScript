@@ -13,6 +13,7 @@ package.json
 luac_out.txt
 Scripts/.stitch/
 Scripts/stitch-output/
+Scripts/Scripts.zip
 
 # Личные данные — только на устройстве, не в GitHub
 Scripts/GlobalSystemFiles/Profiles/

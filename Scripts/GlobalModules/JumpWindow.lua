@@ -19,7 +19,7 @@ function JumpWindow.Name()
 end
 
 function JumpWindow.Desc()
-	return Str("jumpDesc", "Бесконечный прыжок")
+	return Str("jumpDesc", "Импульс без JumpPower")
 end
 
 function JumpWindow.IsOn()
@@ -404,7 +404,7 @@ function JumpWindow.Open(config)
 	cardLbl.Size = UDim2.new(1, -80, 0, 12)
 	cardLbl.Position = UDim2.fromOffset(10, 10)
 	cardLbl.BackgroundTransparency = 1
-	cardLbl.Text = Str("jumpDesc", "Бесконечный прыжок")
+	cardLbl.Text = Str("jumpDesc", "Импульс без JumpPower")
 	cardLbl.TextColor3 = P.textDim or Color3.fromRGB(185, 202, 203)
 	cardLbl.Font = Enum.Font.Gotham
 	cardLbl.TextSize = 11
