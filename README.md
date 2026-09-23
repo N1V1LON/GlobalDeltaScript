@@ -1,7 +1,7 @@
 # GlobalDeltaScript
 
 Хаб **GlobalControler** для Delta executor (Roblox).  
-Версия: **V26.1.2B** · язык UI: RU/EN · логика GS, GUI GM.
+Версия: **V26.1.3B** · язык UI: RU/EN · логика GS, GUI GM.
 
 ## Установка (одна строка)
 
@@ -17,7 +17,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/N1V1LON/GlobalDeltaSc
 loadstring(game:HttpGet("https://raw.githubusercontent.com/N1V1LON/GlobalDeltaScript/main/Scripts/GlobalControler.lua"))()
 ```
 
-Нужен доступ к сети (`HttpGet`) и `loadstring`. Повторный запуск — синглтон, второй раз не пересоздаёт UI.
+Нужен доступ к сети (`HttpGet`) и `loadstring`. Повторный запуск той же версии — синглтон (не пересоздаёт UI); **другая версия** — upgrade: старая останавливается, модули перезагружаются, бейдж = новая `VERSION`.
 
 ## Как это работает
 

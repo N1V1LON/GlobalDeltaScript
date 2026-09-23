@@ -3,6 +3,11 @@
 
 local RAW = "https://raw.githubusercontent.com/N1V1LON/GlobalDeltaScript/main/Scripts/GlobalControler.lua"
 
+local function withCacheBust(url)
+	local t = tostring(math.floor(os.time()))
+	return url .. (url:find("?", 1, true) and "&" or "?") .. "t=" .. t
+end
+
 local function httpGet(url)
 	if type(game) == "table" and type(game.HttpGet) == "function" then
 		local ok, res = pcall(game.HttpGet, game, url)
@@ -19,7 +24,10 @@ local function httpGet(url)
 	return nil
 end
 
-local src = httpGet(RAW)
+local src = httpGet(withCacheBust(RAW))
+if not src then
+	src = httpGet(RAW)
+end
 if not src then
 	error("[Install] не удалось скачать GlobalControler.lua: " .. tostring(RAW))
 end

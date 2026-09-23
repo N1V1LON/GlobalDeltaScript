@@ -1,13 +1,48 @@
 local env = getgenv and getgenv() or _G
-local VERSION = "V26.1.2B"
+local VERSION = "V26.1.3B"
+
+local MODULE_NAMES = {
+	"SpeedLogic", "TPLogic", "NoclipLogic", "JumpLogic", "SpoofingLogic",
+	"PlayersLogic", "FastHealLogic", "WindowBase",
+	"SpeedWindow", "TPWindow", "NoclipWindow", "JumpWindow",
+	"SpoofingWindow", "PlayersWindow", "FastHealWindow", "SettingsWindow",
+}
+
+local function stopLogicModules()
+	local function call(name, method)
+		local m = env[name]
+		if type(m) == "table" and type(m[method]) == "function" then
+			pcall(m[method])
+		end
+	end
+	call("SpeedLogic", "resetSpeed")
+	call("JumpLogic", "disable")
+	call("NoclipLogic", "disable")
+	call("PlayersLogic", "disable")
+	call("FastHealLogic", "disable")
+	call("SpoofingLogic", "disable")
+end
 
 local existing = env.GlobalControler
 if existing and existing.Running then
-	warn("[GC] " .. tostring(existing.VERSION or "") .. " уже запущен")
-	return existing
+	if existing.VERSION == VERSION then
+		warn("[GC] " .. tostring(existing.VERSION or "") .. " уже запущен")
+		return existing
+	end
+	warn("[GC] " .. tostring(existing.VERSION or "?") .. " → " .. VERSION)
+	stopLogicModules()
+	if existing.Destroy then
+		pcall(existing.Destroy, existing)
+	end
+	for _, name in ipairs(MODULE_NAMES) do
+		env[name] = nil
+	end
+	env.WindowRegistry = nil
+	env.TPModuleStore = nil
+	env.GlobalControler = nil
 end
-if existing and existing.Destroy then
-	pcall(existing.Destroy, existing)
+if env.GlobalControler and env.GlobalControler.Destroy then
+	pcall(env.GlobalControler.Destroy, env.GlobalControler)
 end
 
 local GC = {

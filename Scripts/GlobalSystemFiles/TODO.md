@@ -1,6 +1,6 @@
 # TODO
 
-## Сделано — V26.1.2B (beta)
+## Сделано — V26.1.3B (beta)
 
 
 - [x] GlobalControler: синглтон, запускается первым, сам поднимает всё остальное
@@ -41,6 +41,7 @@
 - [x] V26.1.0R: **релиз** — пользователь подтвердил на устройстве (Spoofing/Players/FastHeal работают); bump demo→release
 - [x] V26.1.1B: **speed/jump обход «не доверяй клиенту»** — Speed: BodyVelocity, Jump: AssemblyLinearVelocity.Y, Spoofing baseWalk/baseJump + __index; WalkSpeed/JumpPower всегда base; **Robux unlock — не делаем** (обход оплаты)
 - [x] V26.1.2B: **надёжнее speed/jump** — Speed: LinearVelocity+Attachment (World/Vector, XZ only) + Stepped; Jump: hold Y 0.25s на Stepped; Spoofing: + __newindex (non-base → base), noteBase не перетирает base при вкл Speed/Jump; EMBEDDED 16; `luac` OK
+- [x] V26.1.3B: **fix бейдж «1.0»** — причина: raw GitHub CDN отдавал старый `V26.1.0R` + синглтон возвращал уже запущенный old instance; теперь: при смене `VERSION` — upgrade (stopLogic + Destroy + clear env 16 модулей), Install: cache-bust `?t=` + fallback; README/AGENTS/Doc bump → V26.1.3B
 
 ## Дальше
 
