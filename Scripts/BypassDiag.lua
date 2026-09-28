@@ -189,16 +189,38 @@ if not gui.Parent then
 	gui.Parent = env.PlayerGui or game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 end
 
+local cam = workspace.CurrentCamera
 local vs = try(function()
-	return workspace.CurrentCamera.ViewportSize
+	return cam.ViewportSize
 end, Vector2.new(800, 600))
 local winW = math.min(560, vs.X - 16)
-local winH = math.min(620, vs.Y - 24)
+local winH = math.min(620, vs.Y - 16)
 
 local frame = Instance.new("Frame")
 frame.Size = UDim2.fromOffset(winW, winH)
-frame.AnchorPoint = Vector2.new(0.5, 0.5)
-frame.Position = UDim2.fromScale(0.5, 0.5)
+frame.AnchorPoint = Vector2.new(0, 0)
+frame.Position = UDim2.fromOffset(math.max(4, (vs.X - winW) / 2), math.max(4, (vs.Y - winH) / 2))
+
+local function clampFrame()
+	local sz = frame.AbsoluteSize
+	local x = math.clamp(frame.Position.X.Offset, 4, math.max(4, vs.X - sz.X - 4))
+	local y = math.clamp(frame.Position.Y.Offset, 4, math.max(4, vs.Y - sz.Y - 4))
+	frame.Position = UDim2.fromOffset(x, y)
+end
+
+local function refit()
+	pcall(function()
+		vs = cam.ViewportSize
+	end)
+	winW = math.min(560, vs.X - 16)
+	winH = math.min(620, vs.Y - 16)
+	frame.Size = UDim2.fromOffset(winW, winH)
+	clampFrame()
+end
+if cam then
+	cam:GetPropertyChangedSignal("ViewportSize"):Connect(refit)
+end
+task.defer(clampFrame)
 frame.BackgroundColor3 = Color3.fromRGB(15, 19, 29)
 frame.BorderSizePixel = 0
 frame.Parent = gui
@@ -311,6 +333,52 @@ local function render()
 	end
 end
 render()
+
+local deathN = 0
+local function hookDeath(char)
+	local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 10)
+	if not hum or hum:GetAttribute("DiagHooked") then
+		return
+	end
+	hum:SetAttribute("DiagHooked", true)
+	hum.HealthChanged:Connect(function(h)
+		if h > 0 then
+			return
+		end
+		deathN = deathN + 1
+		local wsa, wsr
+		pcall(function()
+			wsa = game:GetService("Workspace"):GetAttribute("ClientObbyAntiTp")
+			wsr = game:GetService("Workspace"):GetAttribute("AnticheatSuspendedRegion")
+		end)
+		local LL = env.BypassLogic
+		local info = ("hp=0 · anti=%s guard=%s attr=%s region=%s"):format(
+			LL and tostring(LL.isAntiTP()) or "n/a",
+			LL and tostring(LL.getGuardStatus()) or "n/a",
+			tostring(wsa),
+			tostring(wsr)
+		)
+		findings[#findings + 1] = { cap = "Смерть #" .. deathN .. " " .. os.date("%H:%M:%S"), val = info, status = false }
+		warn("[BypassDiag] DEATH #" .. deathN .. " " .. info)
+		if debug and debug.traceback then
+			local tb = try(function()
+				return debug.traceback("", 2)
+			end, nil)
+			if tb and #tb > 5 then
+				findings[#findings + 1] = { cap = "  traceback", val = (tb:gsub("\n", " | ")):sub(1, 200), status = nil }
+				warn("[BypassDiag] TB #" .. deathN .. ": " .. tb)
+			end
+		end
+		render()
+	end)
+end
+pcall(function()
+	local LP = game:GetService("Players").LocalPlayer
+	LP.CharacterAdded:Connect(hookDeath)
+	if LP.Character then
+		hookDeath(LP.Character)
+	end
+end)
 
 local btnRow = Instance.new("Frame")
 btnRow.Size = UDim2.new(1, -20, 0, 28)
@@ -425,8 +493,9 @@ UIS.InputChanged:Connect(function(input)
 		and input.UserInputType ~= Enum.UserInputType.Touch then
 		return
 	end
-	local x = math.clamp(input.Position.X - grab.X, -winW + 60, vs.X - 60)
-	local y = math.clamp(input.Position.Y - grab.Y, 0, vs.Y - 40)
+	local sz = frame.AbsoluteSize
+	local x = math.clamp(input.Position.X - grab.X, 4, math.max(4, vs.X - sz.X - 4))
+	local y = math.clamp(input.Position.Y - grab.Y, 4, math.max(4, vs.Y - sz.Y - 4))
 	frame.Position = UDim2.fromOffset(x, y)
 end)
 UIS.InputEnded:Connect(function(input)
