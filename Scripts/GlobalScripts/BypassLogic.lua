@@ -82,33 +82,56 @@ local function stopRevive()
 	end
 end
 
+local function oursHumanoid(self)
+	if typeof(self) ~= "Instance" or not self:IsA("Humanoid") then
+		return false
+	end
+	local ok, ours = pcall(function()
+		return LP.Character ~= nil and self:IsDescendantOf(LP.Character)
+	end)
+	return ok and ours == true
+end
+
 local function ensureNCHook()
 	local G = getgenv and getgenv() or _G
-	if G.BypassLogicNC then
-		return
-	end
 	if not (hookmetamethod and getnamecallmethod) then
 		return
 	end
-	G.BypassLogicNC = true
-	pcall(function()
-		local old
-		old = hookmetamethod(game, "__namecall", function(self, ...)
-			if getnamecallmethod() == "ChangeState" then
-				local st = ...
-				if reviveOn and antiOn and st == Enum.HumanoidStateType.Dead and typeof(self) == "Instance" and self:IsA("Humanoid") then
-					local ok, ours = pcall(function()
-						return LP.Character ~= nil and self:IsDescendantOf(LP.Character)
-					end)
-					if ok and ours then
+	if not G.BypassLogicNC then
+		G.BypassLogicNC = true
+		pcall(function()
+			local old
+			old = hookmetamethod(game, "__namecall", function(self, ...)
+				local m = getnamecallmethod()
+				if m == "ChangeState" then
+					local st = ...
+					if reviveOn and antiOn and st == Enum.HumanoidStateType.Dead and oursHumanoid(self) then
 						G.BLDeadSuppressed = (G.BLDeadSuppressed or 0) + 1
 						return nil
 					end
+				elseif m == "TakeDamage" then
+					if reviveOn and antiOn and oursHumanoid(self) then
+						G.BLTakeDmgBlocked = (G.BLTakeDmgBlocked or 0) + 1
+						return nil
+					end
 				end
-			end
-			return old(self, ...)
+				return old(self, ...)
+			end)
 		end)
-	end)
+	end
+	if not G.BypassLogicNI then
+		G.BypassLogicNI = true
+		pcall(function()
+			local oldni
+			oldni = hookmetamethod(game, "__newindex", function(self, k, v)
+				if k == "Health" and reviveOn and antiOn and oursHumanoid(self) and type(v) == "number" and v <= 0 then
+					G.BLHpBlocked = (G.BLHpBlocked or 0) + 1
+					return nil
+				end
+				return oldni(self, k, v)
+			end)
+		end)
+	end
 end
 
 local function isGuardTable(v)

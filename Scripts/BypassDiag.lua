@@ -394,7 +394,28 @@ local function row(parent, cap, val, status, i)
 	return r
 end
 
+local function liveVal(cap)
+	local G2 = getgenv and getgenv() or _G
+	if cap == "Ревайв-счётчики" then
+		return "revives=" .. tostring(G2.BLRevives or 0) .. " suppressed-Dead=" .. tostring(G2.BLDeadSuppressed or 0), (G2.BLRevives or 0) > 0
+	elseif cap == "Лагбэк-блок" then
+		return "PivotTo блок.: " .. tostring(G2.BypassDiagPivotBlocked or 0) .. " · flag: " .. tostring(G2.BypassDiagFlagN or 0), (G2.BypassDiagPivotBlocked or 0) > 0
+	elseif cap == "HP-блок" then
+		return "hp≤0 записей блок.: " .. tostring(G2.BLHpBlocked or 0) .. " · TakeDamage: " .. tostring(G2.BLTakeDmgBlocked or 0) .. " · hp-писец: " .. tostring(G2.BypassDiagHpWrite or 0), (G2.BLHpBlocked or 0) > 0
+	end
+	return nil
+end
+
 local function render()
+	for _, f in ipairs(findings) do
+		local v, s = liveVal(f.cap)
+		if v then
+			f.val = v
+			if s ~= nil then
+				f.status = s
+			end
+		end
+	end
 	for _, c in ipairs(scroll:GetChildren()) do
 		if c:IsA("Frame") then
 			c:Destroy()
@@ -415,6 +436,13 @@ local function hookDeath(char)
 	end
 	hum:SetAttribute("DiagHooked", true)
 	local hpHist = {}
+	pcall(function()
+		hum.StateChanged:Connect(function(_, ns)
+			if ns == Enum.HumanoidStateType.Dead then
+				log("STATE Died #" .. deathN)
+			end
+		end)
+	end)
 	hum.HealthChanged:Connect(function(h)
 		hpHist[#hpHist + 1] = string.format("%.1fs hp=%.0f", os.clock(), h)
 		if #hpHist > 14 then
@@ -424,6 +452,11 @@ local function hookDeath(char)
 			return
 		end
 		deathN = deathN + 1
+		local noisy = (deathN == 1) or (deathN % 10 == 1)
+		if not noisy then
+			log("DEATH #" .. deathN .. " hp=0")
+			return
+		end
 		local wsa, wsr
 		pcall(function()
 			wsa = game:GetService("Workspace"):GetAttribute("ClientObbyAntiTp")
@@ -440,7 +473,7 @@ local function hookDeath(char)
 		warn("[BypassDiag] DEATH #" .. deathN .. " " .. info)
 		log("DEATH #" .. deathN .. " " .. info)
 		log("HP-ряд #" .. deathN .. ": " .. table.concat(hpHist, " → "))
-		if (deathN == 1 or deathN % 10 == 0) and G.BypassDiagREBuf and #G.BypassDiagREBuf > 0 then
+		if G.BypassDiagREBuf and #G.BypassDiagREBuf > 0 then
 			local from = math.max(1, #G.BypassDiagREBuf - 29)
 			local slice = {}
 			for i = from, #G.BypassDiagREBuf do
@@ -448,13 +481,6 @@ local function hookDeath(char)
 			end
 			log("REM-BUF@death" .. deathN .. ": " .. table.concat(slice, " || "))
 		end
-		pcall(function()
-			hum.StateChanged:Connect(function(_, ns)
-				if ns == Enum.HumanoidStateType.Dead then
-					log("STATE Died #" .. deathN)
-				end
-			end)
-		end)
 		if debug and debug.traceback then
 			local tb = try(function()
 				return debug.traceback("", 2)
@@ -591,11 +617,16 @@ if not G.BypassDiagNC and hookmetamethod and getnamecallmethod then
 				if st == Enum.HumanoidStateType.Dead and typeof(self) == "Instance" and self:IsA("Humanoid") then
 					local LP = game:GetService("Players").LocalPlayer
 					if LP and LP.Character and self:IsDescendantOf(LP.Character) then
-						local tb = ""
-						if debug and debug.traceback then
-							tb = (debug.traceback("", 2):gsub("\n", " | ")):sub(1, 240)
+						local now = os.clock()
+						if not G.BypassDiagCSLast or now - G.BypassDiagCSLast > 2 then
+							G.BypassDiagCSLast = now
+							G.BypassDiagCSN = (G.BypassDiagCSN or 0) + 1
+							local tb = ""
+							if debug and debug.traceback then
+								tb = (debug.traceback("", 2):gsub("\n", " | ")):sub(1, 240)
+							end
+							log("ChangeState(Dead) #" .. G.BypassDiagCSN .. " :: " .. tb)
 						end
-						log("ChangeState(Dead) :: " .. tb)
 					end
 				end
 				return old(self, ...)
@@ -628,17 +659,63 @@ else
 	add("namecall-тап", "hookmetamethod нет", false)
 end
 
+if not G.BypassDiagNI and hookmetamethod then
+	local ok = pcall(function()
+		local lastLog = 0
+		local oldni
+		oldni = hookmetamethod(game, "__newindex", function(self, k, v)
+			if k == "Health" and typeof(self) == "Instance" and self:IsA("Humanoid") then
+				local LP = game:GetService("Players").LocalPlayer
+				if LP and LP.Character and self:IsDescendantOf(LP.Character) and type(v) == "number" and v <= 0 then
+					G.BypassDiagHpWrite = (G.BypassDiagHpWrite or 0) + 1
+					local now = os.clock()
+					if now - lastLog > 1.5 then
+						lastLog = now
+						local tb = ""
+						if debug and debug.traceback then
+							tb = (debug.traceback("", 2):gsub("\n", " | ")):sub(1, 260)
+						end
+						log(("HP-WRITE v=%s #%d :: %s"):format(tostring(v), G.BypassDiagHpWrite, tb))
+					end
+				end
+			end
+			return oldni(self, k, v)
+		end)
+	end)
+	if ok then
+		G.BypassDiagNI = true
+		add("HP-write-тап", "ok", true)
+	else
+		add("HP-write-тап", "hookfailed", false)
+	end
+elseif G.BypassDiagNI then
+	add("HP-write-тап", "уже был с прошлого запуска", true)
+else
+	add("HP-write-тап", "hookmetamethod нет", false)
+end
+
 task.spawn(function()
 	local hit = nil
+	local matches = {}
+	local function consider(m, src)
+		local ok, full = pcall(function()
+			return m:GetFullName()
+		end)
+		full = ok and full or "?"
+		local n = tostring(m.Name):lower()
+		log(("CONTENT-кандидат [%s]: %s (%s)"):format(src, full, tostring(m.ClassName)))
+		matches[#matches + 1] = { m = m, exact = n == "contentcatalog", ugi = full:find("UGI", 1, true) ~= nil }
+	end
 	pcall(function()
 		if type(getloadedmodules) == "function" then
 			for _, m in ipairs(getloadedmodules()) do
 				local n = tostring(m.Name):lower()
 				if n:find("contentcatalog", 1, true) or n:find("ugi", 1, true) or n:find("catalog", 1, true) then
-					log("getloadedmodules hit: " .. tostring(m.Name) .. " (" .. tostring(m.ClassName) .. ")")
-					hit = hit or m
+					consider(m, "modules")
 				end
 			end
+		else
+			log("getloadedmodules недоступен")
 		end
 	end)
 	pcall(function()
@@ -646,12 +723,25 @@ task.spawn(function()
 			for _, s in ipairs(getscripts()) do
 				local n = tostring(s.Name):lower()
 				if n:find("contentcatalog", 1, true) or n:find("ugi", 1, true) then
-					log("getscripts hit: " .. tostring(s.Name) .. " (" .. tostring(s.ClassName) .. ")")
-					hit = hit or s
+					consider(s, "scripts")
 				end
 			end
+		else
+			log("getscripts недоступен")
 		end
 	end)
+	table.sort(matches, function(a, b)
+		if a.exact ~= b.exact then
+			return a.exact
+		end
+		if a.ugi ~= b.ugi then
+			return a.ugi
+		end
+		return false
+	end)
+	if #matches > 0 then
+		hit = matches[1].m
+	end
 	pcall(function()
 		if not hit then
 			for _, d in ipairs(game:GetService("ReplicatedFirst"):GetDescendants()) do
@@ -662,24 +752,22 @@ task.spawn(function()
 			end
 		end
 	end)
-	pcall(function()
-		if not hit then
-			for _, d in ipairs(game:GetDescendants()) do
-				if d.Name == "ContentCatalog" then
-					hit = d
-					break
-				end
-			end
-		end
-	end)
 	if hit then
-		local path = hit:GetFullName() .. " (" .. hit.ClassName .. ")"
-		log("ContentCatalog: " .. path)
+		local path = try(function()
+			return hit:GetFullName()
+		end, tostring(hit.Name)) .. " (" .. hit.ClassName .. ")"
+		log("ContentCatalog (выбран): " .. path)
 		pcall(function()
 			if type(getscriptbytecode) == "function" then
 				local ok2, bc = pcall(getscriptbytecode, hit)
 				if ok2 and type(bc) == "string" then
 					log("ContentCatalog bytecode: " .. #bc .. " байт")
+					pcall(function()
+						writefile("ContentCatalog_bc.bin", bc)
+						log("bytecode → Workspace/ContentCatalog_bc.bin")
+					end)
+				else
+					log("bytecode ответ: " .. tostring(bc):sub(1, 120))
 				end
 			end
 		end)
@@ -698,12 +786,13 @@ task.spawn(function()
 		end)
 		add("ContentCatalog", path, true)
 	else
-		log("ContentCatalog не найден в дереве игры")
+		log("ContentCatalog не найден ни в modules, ни в scripts, ни в дереве")
 		add("ContentCatalog", "не найден", false)
 	end
 	local G2 = getgenv and getgenv() or _G
 	add("Ревайв-счётчики", "revives=" .. tostring(G2.BLRevives or 0) .. " suppressed-Dead=" .. tostring(G2.BLDeadSuppressed or 0))
 	add("Лагбэк-блок", "PivotTo блок.: " .. tostring(G2.BypassDiagPivotBlocked or 0) .. " · flag: " .. tostring(G2.BypassDiagFlagN or 0), (G2.BypassDiagPivotBlocked or 0) > 0)
+	add("HP-блок", "hp≤0 записей блок.: " .. tostring(G2.BLHpBlocked or 0) .. " · TakeDamage: " .. tostring(G2.BLTakeDmgBlocked or 0), (G2.BLHpBlocked or 0) > 0)
 	render()
 end)
 render()
@@ -875,13 +964,14 @@ mkbtn("ТП: attr=true", 104, 92, btnRow2, function()
 	render()
 end)
 
-mkbtn("Авто-тест", 200, 96, btnRow2, function()
+local function runAutoTest()
 	if G.BypassDiagAT then
 		findings[#findings + 1] = { cap = "Авто-тест", val = "уже идёт", status = nil }
 		render()
 		return
 	end
 	G.BypassDiagAT = true
+	G.BypassDiagATdone = true
 	task.spawn(function()
 		local WS = game:GetService("Workspace")
 		local function sim()
@@ -939,6 +1029,10 @@ mkbtn("Авто-тест", 200, 96, btnRow2, function()
 		G.BypassDiagAT = false
 		render()
 	end)
+end
+
+mkbtn("Авто-тест", 200, 96, btnRow2, function()
+	runAutoTest()
 end)
 
 local LLr = env.BypassLogic
@@ -1018,6 +1112,14 @@ UIS.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1
 		or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = false
+	end
+end)
+
+task.spawn(function()
+	task.wait(5)
+	if not G.BypassDiagATdone and not G.BypassDiagAT then
+		log("AUTO-TEST: автозапуск через 5с после старта")
+		runAutoTest()
 	end
 end)
 
