@@ -163,12 +163,13 @@ local function stateRow()
 	if not LL then
 		return "нет логики", false
 	end
-	return ("enabled=%s safe=%s anti=%s guard=%s attr=%s"):format(
+	return ("enabled=%s safe=%s anti=%s guard=%s attr=%s revive=%s"):format(
 		tostring(LL.isEnabled()),
 		tostring(LL.isSafeZone()),
 		tostring(LL.isAntiTP()),
 		tostring(LL.getGuardStatus()),
-		tostring(LL.getAttrStatus())
+		tostring(LL.getAttrStatus()),
+		LL.isRevive and tostring(LL.isRevive()) or "n/a"
 	), LL.isSafeZone() == true
 end
 
@@ -570,6 +571,60 @@ elseif G.BypassDiagNC then
 else
 	add("namecall-тап", "hookmetamethod нет", false)
 end
+
+task.spawn(function()
+	local hit = nil
+	pcall(function()
+		for _, d in ipairs(game:GetService("ReplicatedFirst"):GetDescendants()) do
+			if d.Name == "ContentCatalog" then
+				hit = d
+				break
+			end
+		end
+	end)
+	pcall(function()
+		if not hit then
+			for _, d in ipairs(game:GetDescendants()) do
+				if d.Name == "ContentCatalog" then
+					hit = d
+					break
+				end
+			end
+		end
+	end)
+	if hit then
+		local path = hit:GetFullName() .. " (" .. hit.ClassName .. ")"
+		log("ContentCatalog: " .. path)
+		pcall(function()
+			if type(getscriptbytecode) == "function" then
+				local ok2, bc = pcall(getscriptbytecode, hit)
+				if ok2 and type(bc) == "string" then
+					log("ContentCatalog bytecode: " .. #bc .. " байт")
+				end
+			end
+		end)
+		pcall(function()
+			if type(decompile) == "function" then
+				local ok3, src = pcall(decompile, hit)
+				if ok3 and type(src) == "string" and #src > 40 then
+					writefile("ContentCatalog_decomp.lua", src)
+					log("ContentCatalog decompiled → Workspace/ContentCatalog_decomp.lua (" .. #src .. " символов)")
+				else
+					log("decompile ответ: " .. tostring(src):sub(1, 120))
+				end
+			else
+				log("decompile() в Delta нет")
+			end
+		end)
+		add("ContentCatalog", path, true)
+	else
+		log("ContentCatalog не найден в дереве игры")
+		add("ContentCatalog", "не найден", false)
+	end
+	local G2 = getgenv and getgenv() or _G
+	add("Ревайв-счётчики", "revives=" .. tostring(G2.BLRevives or 0) .. " suppressed-Dead=" .. tostring(G2.BLDeadSuppressed or 0))
+	render()
+end)
 render()
 
 task.spawn(function()
@@ -706,7 +761,7 @@ mkbtn("Свернуть", 232, 84, btnRow, function()
 	bubble.Visible = true
 end)
 
-mkbtn("ТП: attr=false", 0, 108, btnRow2, function()
+mkbtn("ТП: attr=false", 0, 100, btnRow2, function()
 	G.BypassDiagAttrLock = true
 	pcall(function()
 		game:GetService("Workspace"):SetAttribute("ClientObbyAntiTp", false)
@@ -714,14 +769,14 @@ mkbtn("ТП: attr=false", 0, 108, btnRow2, function()
 	local v = tostring(game:GetService("Workspace"):GetAttribute("ClientObbyAntiTp"))
 	findings[#findings + 1] = {
 		cap = "Эксперимент attr=false",
-		val = "attr=" .. v .. " guard=LOCK → тпни ~200 стадов, смотри flag/лагбэк",
+		val = "attr=" .. v .. " guard=LOCK → жми «Симуляция ТП»",
 		status = nil,
 	}
 	log("EXPERIMENT: attr=false lock=true → " .. v)
 	render()
 end)
 
-mkbtn("ТП: attr=true", 114, 100, btnRow2, function()
+mkbtn("ТП: attr=true", 104, 92, btnRow2, function()
 	G.BypassDiagAttrLock = false
 	pcall(function()
 		game:GetService("Workspace"):SetAttribute("ClientObbyAntiTp", true)
@@ -729,10 +784,46 @@ mkbtn("ТП: attr=true", 114, 100, btnRow2, function()
 	local v = tostring(game:GetService("Workspace"):GetAttribute("ClientObbyAntiTp"))
 	findings[#findings + 1] = {
 		cap = "Эксперимент attr=true",
-		val = "attr=" .. v .. " guard=UNLOCK (состояние по умолчанию)",
+		val = "attr=" .. v .. " guard=UNLOCK (по умолчанию)",
 		status = true,
 	}
 	log("EXPERIMENT: attr=true lock=false → " .. v)
+	render()
+end)
+
+mkbtn("Симуляция ТП", 200, 96, btnRow2, function()
+	local ok, err = pcall(function()
+		local char = game:GetService("Players").LocalPlayer.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		assert(hrp, "нет HumanoidRootPart")
+		hrp.CFrame = hrp.CFrame * CFrame.new(200, 0, 0)
+	end)
+	findings[#findings + 1] = {
+		cap = "Симуляция ТП",
+		val = ok and "+200 по X → смотри flag/KILL/DEATH в логе" or ("ошибка: " .. tostring(err)),
+		status = ok or false,
+	}
+	log("SIM-TP: " .. (ok and "+200 X" or tostring(err)))
+	render()
+end)
+
+local LLr = env.BypassLogic
+local rtxt = "Ревайв: ?"
+if LLr and LLr.isRevive then
+	rtxt = LLr.isRevive() and "Ревайв: ON" or "Ревайв: OFF"
+end
+local reviveBtn = mkbtn(rtxt, 300, 76, btnRow2, function()
+	local LL = env.BypassLogic
+	if not LL or not LL.setRevive then
+		findings[#findings + 1] = { cap = "Ревайв", val = "нет BypassLogic", status = false }
+		render()
+		return
+	end
+	local nv = not LL.isRevive()
+	LL.setRevive(nv)
+	reviveBtn.Text = nv and "Ревайв: ON" or "Ревайв: OFF"
+	findings[#findings + 1] = { cap = "Ревайв", val = tostring(nv), status = nv }
+	log("EXPERIMENT: revive=" .. tostring(nv))
 	render()
 end)
 

@@ -10,12 +10,106 @@ local SAFE_REGION = "-100000,-100000,-100000,100000,100000,100000"
 local safeOn = false
 local antiOn = false
 
+local reviveOn = true
+local reviveCharConn = nil
+local reviveCount = 0
+local reviveWindow = 0
+
+local LP = game:GetService("Players").LocalPlayer
+
 local patched = {}
 local guardWaitTask = nil
 
 local attrConn1 = nil
 local attrConn2 = nil
 local origAttr = nil
+
+local function hookRevive(char)
+	if not (reviveOn and antiOn) then
+		return
+	end
+	pcall(function()
+		local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 5)
+		if not hum or hum:GetAttribute("BLReviveHooked") then
+			return
+		end
+		hum:SetAttribute("BLReviveHooked", true)
+		local last = hum.Health
+		hum.HealthChanged:Connect(function(h)
+			if h > 0 then
+				last = h
+				return
+			end
+			if not (reviveOn and antiOn) then
+				return
+			end
+			local now = os.clock()
+			if now - reviveWindow > 10 then
+				reviveWindow = now
+				reviveCount = 0
+			end
+			reviveCount = reviveCount + 1
+			if reviveCount > 20 then
+				return
+			end
+			local G = getgenv and getgenv() or _G
+			G.BLRevives = (G.BLRevives or 0) + 1
+			pcall(function()
+				local back = (last and last > 0) and last or math.max(hum.MaxHealth, 100)
+				hum.Health = back
+				hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+			end)
+		end)
+	end)
+end
+
+local function startRevive()
+	if reviveCharConn then
+		return
+	end
+	pcall(function()
+		reviveCharConn = LP.CharacterAdded:Connect(hookRevive)
+		if LP.Character then
+			task.spawn(hookRevive, LP.Character)
+		end
+	end)
+end
+
+local function stopRevive()
+	if reviveCharConn then
+		reviveCharConn:Disconnect()
+		reviveCharConn = nil
+	end
+end
+
+local function ensureNCHook()
+	local G = getgenv and getgenv() or _G
+	if G.BypassLogicNC then
+		return
+	end
+	if not (hookmetamethod and getnamecallmethod) then
+		return
+	end
+	G.BypassLogicNC = true
+	pcall(function()
+		local old
+		old = hookmetamethod(game, "__namecall", function(self, ...)
+			if getnamecallmethod() == "ChangeState" then
+				local st = ...
+				if reviveOn and antiOn and st == Enum.HumanoidStateType.Dead and typeof(self) == "Instance" and self:IsA("Humanoid") then
+					local ok, ours = pcall(function()
+						return LP.Character ~= nil and self:IsDescendantOf(LP.Character)
+					end)
+					if ok and ours then
+						G.BLDeadSuppressed = (G.BLDeadSuppressed or 0) + 1
+						return nil
+					end
+				end
+			end
+			return old(self, ...)
+		end)
+	end)
+end
 
 local function isGuardTable(v)
 	if type(v) ~= "table" then
@@ -204,11 +298,28 @@ function BypassLogic.setAntiTP(on)
 		end)
 		applyAttrs()
 		holdAttrs()
+		ensureNCHook()
+		startRevive()
 	else
 		releaseHold()
 		restoreAttrs()
+		stopRevive()
 	end
 	return antiOn
+end
+
+function BypassLogic.setRevive(on)
+	reviveOn = on == true
+	if reviveOn and antiOn then
+		startRevive()
+	elseif not reviveOn then
+		stopRevive()
+	end
+	return reviveOn
+end
+
+function BypassLogic.isRevive()
+	return reviveOn
 end
 
 function BypassLogic.enable()
