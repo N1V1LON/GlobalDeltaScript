@@ -556,6 +556,162 @@ function SettingsWindow.Open(config)
 		GC:SetHubTransparency(v)
 	end, P)
 
+	-- Секция: модули (scope global/test/place) — пул: загруженные + пропущенные
+	local modEntries = {}
+	do
+		local seen = {}
+		local function pool(list)
+			for _, entry in ipairs(list) do
+				local m = entry.mod
+				if type(m) == "table" and (m.GetTable ~= nil or m.getTable ~= nil) and not seen[entry.name] then
+					seen[entry.name] = true
+					modEntries[#modEntries + 1] = entry
+				end
+			end
+		end
+		pool(GC.Modules)
+		pool(GC.Skipped or {})
+	end
+	local yMods = yAlpha + ALPHA_H + 6
+	local ROWS_Y = 42
+	local MODS_H = ROWS_Y + #modEntries * 26 + 6
+	local secMods = section(scroll, GC:Str("modsSection"), yMods, MODS_H, P)
+
+	local modsHint = Instance.new("TextLabel")
+	modsHint.Size = UDim2.new(1, -20, 0, 12)
+	modsHint.Position = UDim2.fromOffset(10, 26)
+	modsHint.BackgroundTransparency = 1
+	modsHint.Text = GC:Str("modsHint")
+	modsHint.TextColor3 = P.textDim or Color3.fromRGB(185, 202, 203)
+	modsHint.Font = Enum.Font.Gotham
+	modsHint.TextSize = 9
+	modsHint.TextXAlignment = Enum.TextXAlignment.Left
+	modsHint.Parent = secMods
+
+	for i, entry in ipairs(modEntries) do
+		local row = Instance.new("Frame")
+		row.Name = "Row"
+		row.Size = UDim2.new(1, -20, 0, 22)
+		row.Position = UDim2.fromOffset(10, ROWS_Y + (i - 1) * 26)
+		row.BackgroundColor3 = P.panelAlt or Color3.fromRGB(27, 32, 41)
+		row.BorderSizePixel = 0
+		row.Parent = secMods
+		Instance.new("UICorner", row).CornerRadius = UDim.new(0, 4)
+
+		local title = entry.name
+		if type(entry.mod.Name) == "function" then
+			local ok, res = pcall(entry.mod.Name)
+			if ok and type(res) == "string" and res ~= "" then
+				title = res
+			end
+		end
+
+		local nameLbl = Instance.new("TextLabel")
+		nameLbl.Size = UDim2.new(1, -80, 1, 0)
+		nameLbl.Position = UDim2.fromOffset(8, 0)
+		nameLbl.BackgroundTransparency = 1
+		nameLbl.Text = title
+		nameLbl.TextColor3 = P.text or Color3.fromRGB(223, 226, 240)
+		nameLbl.Font = Enum.Font.Gotham
+		nameLbl.TextSize = 11
+		nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+		nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+		nameLbl.Parent = row
+
+		local scopeBtn = Instance.new("TextButton")
+		scopeBtn.Name = "ScopeBtn"
+		scopeBtn.Size = UDim2.fromOffset(64, 18)
+		scopeBtn.Position = UDim2.new(1, -72, 0.5, -9)
+		scopeBtn.BorderSizePixel = 0
+		scopeBtn.AutoButtonColor = true
+		scopeBtn.Font = Enum.Font.Code
+		scopeBtn.TextSize = 10
+		scopeBtn.Text = ""
+		scopeBtn.Parent = row
+		Instance.new("UICorner", scopeBtn).CornerRadius = UDim.new(0, 4)
+
+		local function paintScope()
+			local sc = GC:ResolveScope(entry.name, entry.mod)
+			if sc == "place" then
+				scopeBtn.Text = GC:Str("modsScopeP")
+				scopeBtn.BackgroundColor3 = P.accent or Color3.fromRGB(0, 242, 254)
+				scopeBtn.TextColor3 = P.accentOn or Color3.fromRGB(0, 55, 58)
+			elseif sc == "test" then
+				scopeBtn.Text = GC:Str("modsScopeT")
+				scopeBtn.BackgroundColor3 = Color3.fromRGB(250, 204, 21)
+				scopeBtn.TextColor3 = Color3.fromRGB(15, 19, 29)
+			else
+				scopeBtn.Text = GC:Str("modsScopeG")
+				scopeBtn.BackgroundColor3 = P.btn or Color3.fromRGB(38, 42, 52)
+				scopeBtn.TextColor3 = P.textDim or Color3.fromRGB(185, 202, 203)
+			end
+		end
+
+		scopeBtn.MouseButton1Click:Connect(function()
+			local sc = GC:ResolveScope(entry.name, entry.mod)
+			local nextScope = sc == "global" and "test" or sc == "test" and "place" or "global"
+			local patch = { scope = nextScope }
+			if nextScope == "place" then
+				local places = GC:ResolvePlaces(entry.name, entry.mod)
+				local cur = tonumber(game.PlaceId)
+				local has = false
+				if type(places) == "table" then
+					for _, pid in ipairs(places) do
+						if tonumber(pid) == cur then
+							has = true
+						end
+					end
+				end
+				if not has then
+					patch.places = { cur }
+				end
+			end
+			GC:SaveModuleState(entry.name, patch)
+			paintScope()
+
+			-- миграция Modules <-> Skipped при смене scope
+			local allowed = GC:ScopeAllows(entry.name, entry.mod)
+			local modIdx, skipIdx = nil, nil
+			for i, e in ipairs(GC.Modules) do
+				if e.name == entry.name then
+					modIdx = i
+				end
+			end
+			for i, e in ipairs(GC.Skipped) do
+				if e.name == entry.name then
+					skipIdx = i
+				end
+			end
+			if allowed then
+				if not modIdx then
+					GC.Modules[#GC.Modules + 1] = entry
+				end
+				if skipIdx then
+					table.remove(GC.Skipped, skipIdx)
+				end
+			else
+				if modIdx then
+					table.remove(GC.Modules, modIdx)
+					pcall(function()
+						env[entry.name] = nil
+					end)
+				end
+				if not skipIdx then
+					GC.Skipped[#GC.Skipped + 1] = entry
+				end
+			end
+
+			if nextScope == "place"
+				and allowed
+				and type(entry.mod.SetOn) == "function"
+			then
+				pcall(entry.mod.SetOn, true)
+			end
+		end)
+
+		paintScope()
+	end
+
 	base:setSize(300, 380)
 	base.OnClosed = function()
 		window = nil

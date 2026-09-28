@@ -15,6 +15,7 @@ local desiredSpeed = nil
 local stepConn = nil
 local att = nil
 local linVel = nil
+local useLinear = false
 
 function SpeedLogic.getCharacter()
 	return LocalPlayer.Character
@@ -110,20 +111,27 @@ local function tickSpeed()
 	if originalSpeed == nil then
 		originalSpeed = h.WalkSpeed
 	end
-	restoreWalkSpeed()
-	local lv = ensureDrive()
-	if not lv then
-		return
-	end
-	local moving = desiredSpeed ~= nil and h.MoveDirection.Magnitude > 0.01
-	if moving then
-		local dir = h.MoveDirection.Unit
-		lv.VectorVelocity = dir * desiredSpeed
-		lv.MaxForce = Vector3.new(1e5, 0, 1e5)
-		lv.Enabled = true
+	if useLinear then
+		restoreWalkSpeed()
+		local lv = ensureDrive()
+		if not lv then
+			return
+		end
+		local moving = desiredSpeed ~= nil and h.MoveDirection.Magnitude > 0.01
+		if moving then
+			local dir = h.MoveDirection.Unit
+			lv.VectorVelocity = dir * desiredSpeed
+			lv.MaxForce = Vector3.new(1e5, 0, 1e5)
+			lv.Enabled = true
+		else
+			lv.VectorVelocity = Vector3.zero
+			lv.MaxForce = Vector3.new(0, 0, 0)
+		end
 	else
-		lv.VectorVelocity = Vector3.zero
-		lv.MaxForce = Vector3.new(0, 0, 0)
+		destroyDrive()
+		if desiredSpeed and h.WalkSpeed ~= desiredSpeed then
+			h.WalkSpeed = desiredSpeed
+		end
 	end
 end
 
@@ -178,6 +186,29 @@ end
 
 function SpeedLogic.getDesired()
 	return desiredSpeed
+end
+
+function SpeedLogic.setUseLinear(value)
+	value = value == true
+	if value == useLinear then
+		return useLinear
+	end
+	useLinear = value
+	if not desiredSpeed then
+		return useLinear
+	end
+	if useLinear then
+		destroyDrive()
+		restoreWalkSpeed()
+	else
+		destroyDrive()
+	end
+	pcall(tickSpeed)
+	return useLinear
+end
+
+function SpeedLogic.getUseLinear()
+	return useLinear
 end
 
 LocalPlayer.CharacterAdded:Connect(function()

@@ -36,6 +36,12 @@ function SpeedWindow.SetOn(state)
 	if state then
 		local cfg = GC and GC.GetModuleConfig and GC:GetModuleConfig("SpeedWindow") or {}
 		local v = tonumber(cfg.defaultSpeed) or lastSpeed or 50
+		if v <= L.BASE_SPEED then
+			v = (lastSpeed and lastSpeed > L.BASE_SPEED) and lastSpeed or 50
+		end
+		if L.setUseLinear then
+			L.setUseLinear(cfg.useLinear == true)
+		end
 		L.setSpeed(v)
 		lastSpeed = v
 	else
@@ -61,7 +67,15 @@ function SpeedWindow.Restore(config)
 		lastSpeed = v
 	end
 	if config.enabled then
-		L.setSpeed(v or lastSpeed or 50)
+		if L.setUseLinear then
+			L.setUseLinear(config.useLinear == true)
+		end
+		local v = tonumber(config.defaultSpeed) or lastSpeed or 50
+		if v <= L.BASE_SPEED then
+			v = 50
+		end
+		lastSpeed = v
+		L.setSpeed(v)
 	end
 end
 
@@ -338,6 +352,12 @@ function SpeedWindow.Open(config)
 	local base = WindowBase.new("Speed", SpeedWindow.Name(), 300, 200)
 	window = base
 
+	if SpeedLogic.setUseLinear then
+		local GCcfg = env.GlobalControler
+		local cfg = GCcfg and GCcfg.GetModuleConfig and GCcfg:GetModuleConfig("SpeedWindow") or {}
+		SpeedLogic.setUseLinear(cfg.useLinear == true)
+	end
+
 	local content = base.Content
 	local PAD = 6
 
@@ -357,7 +377,7 @@ function SpeedWindow.Open(config)
 		end
 	end
 
-	local enabled = false
+	local enabled = SpeedLogic.isEnabled()
 	local slider
 	local stateLabel
 	local readoutLabel
@@ -419,10 +439,14 @@ function SpeedWindow.Open(config)
 	local function setEnabled(state)
 		enabled = state
 		if enabled then
-			if SpeedLogic.canRun() then
-				SpeedLogic.setSpeed(math.floor(slider.get() + 0.5))
+			local v = math.floor(slider.get() + 0.5)
+			if v <= SpeedLogic.BASE_SPEED then
+				v = (lastSpeed and lastSpeed > SpeedLogic.BASE_SPEED) and lastSpeed or 50
 			end
-			lastSpeed = math.floor(slider.get() + 0.5)
+			if SpeedLogic.canRun() then
+				SpeedLogic.setSpeed(v)
+			end
+			lastSpeed = v
 		else
 			if SpeedLogic.canRun() then
 				SpeedLogic.resetSpeed()
@@ -472,8 +496,7 @@ function SpeedWindow.Open(config)
 	readoutLabel.TextXAlignment = Enum.TextXAlignment.Left
 	readoutLabel.Parent = card
 
-	toggle = makeToggle(card, false, setEnabled)
-	toggle.set = toggle.set
+	toggle = makeToggle(card, enabled, setEnabled)
 	local tBtn = card:FindFirstChild("Toggle")
 	if tBtn then
 		tBtn.Size = UDim2.fromOffset(56, 28)

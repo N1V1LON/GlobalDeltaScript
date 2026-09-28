@@ -1,11 +1,12 @@
 local env = getgenv and getgenv() or _G
-if env.SpoofingWindow then return env.SpoofingWindow end
+if env.BypassWindow then return env.BypassWindow end
 
-local SpoofingWindow = {}
-SpoofingWindow.GetTable = "Server"
-SpoofingWindow.GetPosition = 1
-SpoofingWindow.QuickToggle = true
-SpoofingWindow.Hidden = true
+local BypassWindow = {}
+BypassWindow.GetTable = "Server"
+BypassWindow.GetPosition = 3
+BypassWindow.Scope = "place"
+BypassWindow.Places = { 107778070777162 }
+BypassWindow.QuickToggle = true
 
 local function Str(key, fallback)
 	local GC = env.GlobalControler
@@ -15,39 +16,54 @@ local function Str(key, fallback)
 	return fallback
 end
 
-function SpoofingWindow.Name()
-	return Str("spoofName", "Spoofing")
+function BypassWindow.Name()
+	return Str("bypassName", "Bypass")
 end
 
-function SpoofingWindow.Desc()
-	return Str("spoofDesc", "Обход speed / jump / tp")
+function BypassWindow.Desc()
+	return Str("bypassDesc", "Обход guard'ов игры")
 end
 
-function SpoofingWindow.IsOn()
-	local L = env.SpoofingLogic
+function BypassWindow.IsOn()
+	local L = env.BypassLogic
 	return L ~= nil and L.isEnabled() == true
 end
 
-function SpoofingWindow.SetOn(state)
-	local L = env.SpoofingLogic
-	assert(L, "SpoofingLogic не загружен")
-	L.disable()
+function BypassWindow.SetOn(state)
+	local L = env.BypassLogic
+	assert(L, "BypassLogic не загружен")
+	if state then
+		L.enable()
+	else
+		L.disable()
+	end
 	local GC = env.GlobalControler
 	if GC and GC.SaveModuleState then
-		GC:SaveModuleState("SpoofingWindow", {
-			enabled = false,
+		GC:SaveModuleState("BypassWindow", {
+			enabled = state == true,
+			safeZone = L.isSafeZone(),
+			antiTP = L.isAntiTP(),
 		})
 	end
-	return false
+	return BypassWindow.IsOn()
 end
 
-function SpoofingWindow.Restore(config)
+function BypassWindow.Restore(config)
 	config = config or {}
-	local L = env.SpoofingLogic
+	local L = env.BypassLogic
 	if not L then
 		return
 	end
-	L.disable()
+	if config.safeZone ~= nil or config.antiTP ~= nil then
+		if config.safeZone then
+			L.setSafeZone(true)
+		end
+		if config.antiTP then
+			L.setAntiTP(true)
+		end
+	elseif config.enabled then
+		L.enable()
+	end
 end
 
 local window = nil
@@ -117,7 +133,6 @@ local function makeToggle(parent, on, onToggle)
 		label.Text = state and "ON" or "OFF"
 		label.TextColor3 = state and (P.accentOn or Color3.fromRGB(0, 55, 58)) or (P.textDim or Color3.fromRGB(185, 202, 203))
 		knob.Position = state and UDim2.new(1, -(h - 4), 0, 4) or UDim2.fromOffset(4, 4)
-		knob.BackgroundColor3 = state and (P.accentOn or Color3.fromRGB(0, 55, 58)) or (P.textDim or Color3.fromRGB(185, 202, 203))
 	end
 
 	btn.MouseButton1Click:Connect(function()
@@ -137,10 +152,10 @@ local function makeToggle(parent, on, onToggle)
 	}
 end
 
-local function flagRow(parent, y, titleText, flagName, L, P, onSaved)
+local function optRow(parent, y, titleText, statusText, getter, setter, P)
 	local row = Instance.new("Frame")
-	row.Name = "FlagRow"
-	row.Size = UDim2.new(1, 0, 0, 36)
+	row.Name = "OptRow"
+	row.Size = UDim2.new(1, 0, 0, 40)
 	row.Position = UDim2.fromOffset(0, y)
 	row.BackgroundColor3 = P.panelAlt or Color3.fromRGB(27, 32, 41)
 	row.BorderSizePixel = 0
@@ -148,8 +163,8 @@ local function flagRow(parent, y, titleText, flagName, L, P, onSaved)
 	corner(row, 4)
 
 	local lbl = Instance.new("TextLabel")
-	lbl.Size = UDim2.new(1, -70, 1, 0)
-	lbl.Position = UDim2.fromOffset(10, 0)
+	lbl.Size = UDim2.new(1, -70, 0, 14)
+	lbl.Position = UDim2.fromOffset(10, 6)
 	lbl.BackgroundTransparency = 1
 	lbl.Text = titleText
 	lbl.TextColor3 = P.text or Color3.fromRGB(223, 226, 240)
@@ -158,20 +173,29 @@ local function flagRow(parent, y, titleText, flagName, L, P, onSaved)
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Parent = row
 
-	local t = makeToggle(row, L.getFlag(flagName), function(on)
-		L.setFlag(flagName, on)
-		if onSaved then
-			onSaved()
-		end
+	local st = Instance.new("TextLabel")
+	st.Name = "Status"
+	st.Size = UDim2.new(1, -70, 0, 12)
+	st.Position = UDim2.fromOffset(10, 22)
+	st.BackgroundTransparency = 1
+	st.Text = statusText or ""
+	st.TextColor3 = P.textDim or Color3.fromRGB(185, 202, 203)
+	st.Font = Enum.Font.Gotham
+	st.TextSize = 9
+	st.TextXAlignment = Enum.TextXAlignment.Left
+	st.Parent = row
+
+	local t = makeToggle(row, getter(), function(on)
+		setter(on)
 	end)
 	local tBtn = row:FindFirstChild("Toggle")
 	if tBtn then
 		tBtn.Position = UDim2.new(1, -66, 0.5, -14)
 	end
-	return t
+	return { toggle = t, status = st }
 end
 
-function SpoofingWindow.Open(config)
+function BypassWindow.Open(config)
 	config = config or {}
 	if window then
 		if window._destroyed then
@@ -184,12 +208,12 @@ function SpoofingWindow.Open(config)
 	end
 
 	local WindowBase = env.WindowBase
-	local L = env.SpoofingLogic
+	local L = env.BypassLogic
 	assert(WindowBase, "WindowBase не загружен")
-	assert(L, "SpoofingLogic не загружен")
+	assert(L, "BypassLogic не загружен")
 
 	local P = currentPalette() or WindowBase.Palette
-	local base = WindowBase.new("Spoofing", SpoofingWindow.Name(), 280, 240)
+	local base = WindowBase.new("Bypass", BypassWindow.Name(), 300, 160)
 	window = base
 	local content = base.Content
 	local PAD = 6
@@ -197,42 +221,67 @@ function SpoofingWindow.Open(config)
 	local stateLabel
 	local toggle
 	local bigState
+	local rowSafe
+	local rowAnti
 
 	local function saveState()
 		local GC = env.GlobalControler
 		if GC and GC.SaveModuleState then
-			local flags = L.getFlags and L.getFlags() or {}
-			GC:SaveModuleState("SpoofingWindow", {
+			GC:SaveModuleState("BypassWindow", {
 				enabled = L.isEnabled(),
-				speed = flags.speed,
-				jump = flags.jump,
-				tp = flags.tp,
+				safeZone = L.isSafeZone(),
+				antiTP = L.isAntiTP(),
 			})
 		end
 	end
 
 	local function refreshStatus()
+		if bigState then
+			local on = L.isEnabled()
+			bigState.Text = on and "ON" or "OFF"
+			bigState.TextColor3 = on and (P.accent or Color3.fromRGB(0, 242, 254)) or P.textDim
+		end
 		if stateLabel then
 			if L.isEnabled() then
-				stateLabel.Text = "ON  ·  " .. SpoofingWindow.Desc()
+				stateLabel.Text = "ON  ·  guard bypass активен"
 				stateLabel.TextColor3 = P.accent or Color3.fromRGB(0, 242, 254)
 			else
-				stateLabel.Text = "OFF  ·  checks active"
+				stateLabel.Text = "OFF  ·  стоковый режим"
 				stateLabel.TextColor3 = P.textDim
 			end
 		end
-		if bigState then
-			bigState.Text = L.isEnabled() and "ON" or "OFF"
-			bigState.TextColor3 = L.isEnabled() and (P.accent or Color3.fromRGB(0, 242, 254)) or P.textDim
+		if rowSafe then
+			rowSafe.toggle.set(L.isSafeZone())
+			local gs = L.getGuardStatus()
+			if gs == "patched" then
+				rowSafe.status.Text = Str("bypassPatched", "патч установлен")
+				rowSafe.status.TextColor3 = P.accent or Color3.fromRGB(0, 242, 254)
+			elseif gs == "waiting" then
+				rowSafe.status.Text = Str("bypassWaiting", "поиск guard-модуля...")
+				rowSafe.status.TextColor3 = Color3.fromRGB(250, 204, 21)
+			else
+				rowSafe.status.Text = Str("bypassOff", "выключен")
+				rowSafe.status.TextColor3 = P.textDim
+			end
+		end
+		if rowAnti then
+			rowAnti.toggle.set(L.isAntiTP())
+			if L.isAntiTP() then
+				if L.getAttrStatus() then
+					rowAnti.status.Text = Str("bypassAttrs", "атрибуты выставлены")
+					rowAnti.status.TextColor3 = P.accent or Color3.fromRGB(0, 242, 254)
+				else
+					rowAnti.status.Text = Str("bypassAttrsLost", "атрибуты сброшены, удержание...")
+					rowAnti.status.TextColor3 = Color3.fromRGB(250, 204, 21)
+				end
+			else
+				rowAnti.status.Text = Str("bypassOff", "выключен")
+				rowAnti.status.TextColor3 = P.textDim
+			end
 		end
 	end
 
-	local function setEnabled(state)
-		if state then
-			L.enable()
-		else
-			L.disable()
-		end
+	local function saveRefresh()
 		saveState()
 		refreshStatus()
 	end
@@ -251,7 +300,7 @@ function SpoofingWindow.Open(config)
 	cardLbl.Size = UDim2.new(1, -80, 0, 12)
 	cardLbl.Position = UDim2.fromOffset(10, 10)
 	cardLbl.BackgroundTransparency = 1
-	cardLbl.Text = SpoofingWindow.Desc()
+	cardLbl.Text = BypassWindow.Desc()
 	cardLbl.TextColor3 = P.textDim or Color3.fromRGB(185, 202, 203)
 	cardLbl.Font = Enum.Font.Gotham
 	cardLbl.TextSize = 11
@@ -263,14 +312,21 @@ function SpoofingWindow.Open(config)
 	bigState.Size = UDim2.new(1, -80, 0, 28)
 	bigState.Position = UDim2.fromOffset(10, 26)
 	bigState.BackgroundTransparency = 1
-	bigState.Text = L.isEnabled() and "ON" or "OFF"
+	bigState.Text = "OFF"
 	bigState.TextColor3 = P.textDim
 	bigState.Font = Enum.Font.Code
 	bigState.TextSize = 24
 	bigState.TextXAlignment = Enum.TextXAlignment.Left
 	bigState.Parent = card
 
-	toggle = makeToggle(card, L.isEnabled(), setEnabled)
+	toggle = makeToggle(card, L.isEnabled(), function(state)
+		if state then
+			L.enable()
+		else
+			L.disable()
+		end
+		saveRefresh()
+	end)
 	local tBtn = card:FindFirstChild("Toggle")
 	if tBtn then
 		tBtn.Size = UDim2.fromOffset(56, 28)
@@ -278,12 +334,41 @@ function SpoofingWindow.Open(config)
 	end
 
 	local y = PAD + 64 + 8
-	flagRow(content, y, Str("spoofSpeed", "Обход проверки скорости"), "speed", L, P, saveState)
-	y = y + 40
-	flagRow(content, y, Str("spoofJump", "Обход проверки прыжка"), "jump", L, P, saveState)
-	y = y + 40
-	flagRow(content, y, Str("spoofTp", "Обход проверки телепорта"), "tp", L, P, saveState)
+	rowSafe = optRow(content, y,
+		Str("bypassSafe", "Безопасная зона (safe zone)"),
+		Str("bypassOff", "выключен"),
+		L.isSafeZone,
+		function(v)
+			L.setSafeZone(v)
+			saveRefresh()
+		end,
+		P)
 	y = y + 44
+	rowAnti = optRow(content, y,
+		Str("bypassAntiTP", "Анти-ТП обби (ObbyAntiTP)"),
+		Str("bypassOff", "выключен"),
+		L.isAntiTP,
+		function(v)
+			L.setAntiTP(v)
+			saveRefresh()
+		end,
+		P)
+	y = y + 44
+
+	local hint = Instance.new("TextLabel")
+	hint.Name = "Hint"
+	hint.Position = UDim2.fromOffset(0, y + 4)
+	hint.Size = UDim2.new(1, 0, 0, 26)
+	hint.BackgroundTransparency = 1
+	hint.Text = Str("bypassHint", "Safe zone — предметы в безопасной зоне.\nАнти-ТП — снять kill при телепорте в обби.")
+	hint.TextColor3 = P.textDim
+	hint.Font = Enum.Font.Gotham
+	hint.TextSize = 10
+	hint.TextWrapped = true
+	hint.TextYAlignment = Enum.TextYAlignment.Top
+	hint.TextXAlignment = Enum.TextXAlignment.Left
+	hint.Parent = content
+	y = y + 4 + 26 + 6
 
 	stateLabel = Instance.new("TextLabel")
 	stateLabel.Name = "State"
@@ -298,13 +383,19 @@ function SpoofingWindow.Open(config)
 	stateLabel.Parent = content
 	y = y + 14 + PAD
 
-	base:setSize(280, 28 + y)
+	base:setSize(300, 28 + y)
 	refreshStatus()
+	task.spawn(function()
+		while window == base and not base._destroyed do
+			refreshStatus()
+			task.wait(0.5)
+		end
+	end)
 
 	base.OnClosed = function()
 		window = nil
 	end
 end
 
-env.SpoofingWindow = SpoofingWindow
-return SpoofingWindow
+env.BypassWindow = BypassWindow
+return BypassWindow

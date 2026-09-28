@@ -17,9 +17,10 @@
 	},
 	"modules": {
 		"SpeedWindow": {
-			"defaultSpeed": 16,
+			"defaultSpeed": 50,
 			"minSpeed": 16,
 			"maxSpeed": 200,
+			"useLinear": false,
 			"enabled": false
 		},
 		"TPWindow": {
