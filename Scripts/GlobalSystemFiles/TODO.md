@@ -1,5 +1,10 @@
 # TODO
 
+## Сделано — V26.2.1R (fix)
+
+- [x] **V26.2.1R: fix Bypass «сломалось снова» — усиление + диагностика** — анализ: runtime-конфиг `Workspace/Scripts/GlobalSystemFiles/Config.json` (Base="Scripts/", перезаписан сегодня 09:10) хранит `BypassWindow {enabled:true, antiTP:true, safeZone:false}` — **safeZone в сохранённом состоянии выключен** (а это и есть обход); `BypassLogic` переписан: убран одноразовый `patchGuard`+`guardPatched` навсегда → `scanAndPatch()` пере-сканирует `getgc(true)` каждые 2с пока safeOn, патчит **ВСЕ** guard-таблицы (`patched[t]=wrapped`) и перепатчит, если игра перезаписала `AllowsLocalUse` (пересозданные/множественные guard-таблицы — вероятная причина «работало → отвалилось»); `getGuardStatus` = patchedCount>0; новый **`Scripts/BypassDiag.lua`** — диагностический GUI (PlaceId vs 107778070777162, Base, вхождение BypassWindow в Modules/Skipped, Errors, ResolveScope/Places/ScopeAllows, Config-запись, состояние L, атрибуты Workspace, guard-скан с детектом нашего патча по upvalue `safeOn`, кнопки «Включить Bypass»/«Обновить»); VERSION → V26.2.1R (hot-reload при повторном Execute), EMBEDDED 18 sync, `luac5.1 -p` OK
+- [ ] **Диагностика в игре**: прогнать `Scripts/BypassDiag.lua` на 107778070777162, смотреть findings — PlaceId≠ → Skipped? SetOn assert (BypassLogic=nil)? guard-таблица не найдена в getgc? — по результату добить причину (вернуть Scope=global / добавить Places / чинить runtime-конфиг)
+
 ## Сделано — V26.2.0R (release)
 
 - [x] **V26.2.0R: релиз** — Scope-система (G/T/P + Settings секция), защита от двойных пальцев + drag-fix, лаунчер 48×48 `N`, **Bypass** (GS `BypassLogic` + GM `BypassWindow`): safe-zone патч `AllowsLocalUse` + анти-ТП атрибуты ObbyAntiTP — **протестировано на 107778070777162 (Steal An Egg), работает идеально** → Scope переведён в `place` (Places={107778070777162}); декомпиляция дампа: `luau-decompiler` (PumbaaDev, v12) + 1783/1785 скриптов в `decompiled/`; EMBEDDED 18, `luac -p` OK

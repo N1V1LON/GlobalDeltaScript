@@ -10,66 +10,77 @@ local SAFE_REGION = "-100000,-100000,-100000,100000,100000,100000"
 local safeOn = false
 local antiOn = false
 
-local guardPatched = false
-local guardTable = nil
-local origAllows = nil
+local patched = {}
 local guardWaitTask = nil
 
 local attrConn1 = nil
 local attrConn2 = nil
 local origAttr = nil
 
-local function findGuardModule()
-	local ok, res = pcall(function()
-		for _, v in getgc(true) do
-			if type(v) == "table"
-				and type(rawget(v, "AllowsLocalUse")) == "function"
-				and type(rawget(v, "IsInsideSafeZone")) == "function"
-			then
-				return v
-			end
-		end
-		return nil
-	end)
-	if ok then
-		return res
-	end
-	return nil
-end
-
-local function patchGuard()
-	if guardPatched then
-		return true
-	end
-	local t = findGuardModule()
-	if not t then
+local function isGuardTable(v)
+	if type(v) ~= "table" then
 		return false
 	end
-	guardTable = t
-	origAllows = rawget(t, "AllowsLocalUse")
-	t.AllowsLocalUse = function(...)
+	local ok, a, b = pcall(function()
+		return rawget(v, "AllowsLocalUse"), rawget(v, "IsInsideSafeZone")
+	end)
+	return ok and type(a) == "function" and type(b) == "function"
+end
+
+local function patchOne(t)
+	local current = rawget(t, "AllowsLocalUse")
+	if type(current) ~= "function" or current == patched[t] then
+		return false
+	end
+	local orig = current
+	local wrapped = function(...)
 		if safeOn then
 			return false
 		end
-		if origAllows then
-			return origAllows(...)
+		if orig then
+			return orig(...)
 		end
 		return false
 	end
-	guardPatched = true
+	local ok = pcall(function()
+		t.AllowsLocalUse = wrapped
+	end)
+	if not ok or rawget(t, "AllowsLocalUse") ~= wrapped then
+		return false
+	end
+	patched[t] = wrapped
 	return true
 end
 
+local function scanAndPatch()
+	local ok = pcall(function()
+		for _, v in getgc(true) do
+			if isGuardTable(v) then
+				patchOne(v)
+			end
+		end
+	end)
+	return ok
+end
+
+local function patchedCount()
+	local n = 0
+	for t, fn in pairs(patched) do
+		if type(t) == "table" and rawget(t, "AllowsLocalUse") == fn then
+			n = n + 1
+		end
+	end
+	return n
+end
+
 local function startGuardWait()
-	if guardWaitTask or guardPatched then
+	if guardWaitTask then
 		return
 	end
 	guardWaitTask = task.spawn(function()
-		while safeOn and not guardPatched do
-			if patchGuard() then
-				break
-			end
-			task.wait(1)
+		while safeOn do
+			scanAndPatch()
+			task.wait(2)
 		end
 		guardWaitTask = nil
 	end)
@@ -136,7 +147,7 @@ function BypassLogic.getGuardStatus()
 	if not safeOn then
 		return "off"
 	end
-	if guardPatched then
+	if patchedCount() > 0 then
 		return "patched"
 	end
 	return "waiting"
@@ -157,9 +168,8 @@ function BypassLogic.setSafeZone(on)
 	on = on == true
 	safeOn = on
 	if on then
-		if not patchGuard() then
-			startGuardWait()
-		end
+		scanAndPatch()
+		startGuardWait()
 	end
 	return safeOn
 end
