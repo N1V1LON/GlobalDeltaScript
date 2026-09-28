@@ -338,7 +338,7 @@ closeBtn.Parent = bar
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 4)
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -20, 1, -72)
+scroll.Size = UDim2.new(1, -20, 1, -100)
 scroll.Position = UDim2.fromOffset(10, 32)
 scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
@@ -506,6 +506,70 @@ if not G.BypassDiagRemotes then
 else
 	add("Remote-тапы", "уже были с прошлого запуска", true)
 end
+
+if not G.BypassDiagNC and hookmetamethod and getnamecallmethod then
+	local ok = pcall(function()
+		local last = G.BypassDiagAttrSeen or {}
+		G.BypassDiagAttrSeen = last
+		local WS = game:GetService("Workspace")
+		local function watch(nm)
+			return nm == "ClientObbyAntiTp"
+				or nm == "AnticheatSuspendedRegion"
+				or nm == "ClientObbyAntiTpDebug"
+		end
+		local old
+		old = hookmetamethod(game, "__namecall", function(self, ...)
+			local m = getnamecallmethod()
+			if m == "GetAttribute" then
+				local r = old(self, ...)
+				local nm = ...
+				if self == WS and type(nm) == "string" and watch(nm) then
+					local sv = tostring(r)
+					if last[nm] ~= sv then
+						last[nm] = sv
+						log("ATTR read " .. nm .. " → " .. sv)
+					end
+				end
+				return r
+			elseif m == "SetAttribute" then
+				local nm, val = ...
+				if self == WS and type(nm) == "string" and watch(nm) then
+					last[nm] = tostring(val)
+					local tb = ""
+					if debug and debug.traceback then
+						tb = (debug.traceback("", 2):gsub("\n", " | ")):sub(1, 170)
+					end
+					log(("ATTR write %s=%s :: %s"):format(nm, tostring(val), tb))
+				end
+				return old(self, ...)
+			elseif m == "ChangeState" then
+				local st = ...
+				if st == Enum.HumanoidStateType.Dead and typeof(self) == "Instance" and self:IsA("Humanoid") then
+					local LP = game:GetService("Players").LocalPlayer
+					if LP and LP.Character and self:IsDescendantOf(LP.Character) then
+						local tb = ""
+						if debug and debug.traceback then
+							tb = (debug.traceback("", 2):gsub("\n", " | ")):sub(1, 240)
+						end
+						log("ChangeState(Dead) :: " .. tb)
+					end
+				end
+				return old(self, ...)
+			end
+			return old(self, ...)
+		end)
+	end)
+	if ok then
+		G.BypassDiagNC = true
+		add("namecall-тап", "ok", true)
+	else
+		add("namecall-тап", "hookfailed", false)
+	end
+elseif G.BypassDiagNC then
+	add("namecall-тап", "уже был с прошлого запуска", true)
+else
+	add("namecall-тап", "hookmetamethod нет", false)
+end
 render()
 
 task.spawn(function()
@@ -572,9 +636,15 @@ end)
 
 local btnRow = Instance.new("Frame")
 btnRow.Size = UDim2.new(1, -20, 0, 28)
-btnRow.Position = UDim2.new(0, 10, 1, -32)
+btnRow.Position = UDim2.new(0, 10, 1, -60)
 btnRow.BackgroundTransparency = 1
 btnRow.Parent = frame
+
+local btnRow2 = Instance.new("Frame")
+btnRow2.Size = UDim2.new(1, -20, 0, 28)
+btnRow2.Position = UDim2.new(0, 10, 1, -32)
+btnRow2.BackgroundTransparency = 1
+btnRow2.Parent = frame
 
 local bubble
 
@@ -634,6 +704,36 @@ end)
 mkbtn("Свернуть", 232, 84, btnRow, function()
 	frame.Visible = false
 	bubble.Visible = true
+end)
+
+mkbtn("ТП: attr=false", 0, 108, btnRow2, function()
+	G.BypassDiagAttrLock = true
+	pcall(function()
+		game:GetService("Workspace"):SetAttribute("ClientObbyAntiTp", false)
+	end)
+	local v = tostring(game:GetService("Workspace"):GetAttribute("ClientObbyAntiTp"))
+	findings[#findings + 1] = {
+		cap = "Эксперимент attr=false",
+		val = "attr=" .. v .. " guard=LOCK → тпни ~200 стадов, смотри flag/лагбэк",
+		status = nil,
+	}
+	log("EXPERIMENT: attr=false lock=true → " .. v)
+	render()
+end)
+
+mkbtn("ТП: attr=true", 114, 100, btnRow2, function()
+	G.BypassDiagAttrLock = false
+	pcall(function()
+		game:GetService("Workspace"):SetAttribute("ClientObbyAntiTp", true)
+	end)
+	local v = tostring(game:GetService("Workspace"):GetAttribute("ClientObbyAntiTp"))
+	findings[#findings + 1] = {
+		cap = "Эксперимент attr=true",
+		val = "attr=" .. v .. " guard=UNLOCK (состояние по умолчанию)",
+		status = true,
+	}
+	log("EXPERIMENT: attr=true lock=false → " .. v)
+	render()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()

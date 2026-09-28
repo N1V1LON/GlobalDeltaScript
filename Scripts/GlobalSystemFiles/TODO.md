@@ -1,9 +1,14 @@
 # TODO
 
+## Сделано — V26.2.4R (fix)
+
+- [x] **V26.2.4R: убийца при ТП ПОЙМАН — клиентский ObbyAntiTP** — лог 18:56:04: `flag #1: moved 774 EXTREME` → `KILL: jump 774 studs, flags 1` → DEATH×3 за один тик (hp 0→-99999→0), **при attr=true и валидном регионе** → атрибуты НЕ отключают `check()` (декомпиляция ветки врала); print-test: `Debug=true→2, Debug=false→0` — принты игра включаются `ClientObbyAntiTpDebug=true` (правило: декомпилятор переворачивает условия); flag без EXTREME (205/149 стадов) = lagback, EXTREME (774) = KILL; после смерти сервер шлёт `SetWalkSpeed 137.879` + `Relocate` → `grace: server relocation`; traceback смерти = сам диаг (обфускация Delta `ufiosgGgzvytvoFNL:10/446`), не убийца. V26.2.4R: **namecall-тап** — `GetAttribute` (лог при смене значения), `SetAttribute` с traceback (кто пишет), `ChangeState(Dead)` с traceback (**стек убийцы** — клиентский скрипт покажет строки 287/348); кнопки **«ТП: attr=false»/«attr=true»** (experiment, лок `BypassDiagAttrLock` в `BypassLogic.attrConn1` — guard не возвращает true); EMBEDDED 18, `luac5.1 -p` OK
+- [ ] **Эксперимент attr**: запустить BypassDiag → «ТП: attr=false» → тп ~200 стадов → если flag/лагбэк пропал = `attr=true` был НЕ выключателем (мы его включали!) → оставить false; если flag есть → «attr=true» + прочитать лог (ATTR read/write + ChangeState-стек) и назвать мне момент
+
 ## Сделано — V26.2.3R (fix)
 
 - [x] **V26.2.3R: BypassDiag — захват убийцы при ТП** — скрины 17:57 прочитаны полностью (10/10): все находки зелёные, **0 смертей и 0 строк `[ObbyAntiTP]` в логе** (хук print поздний — печати `Start` прошли до запуска диага); декомпиляция `Kernel.client.lua`: `bootController` поднимает **все** контроллеры `Controllers.Game` (ObbyAntiTP стартует); единственные клиентские убийцы в дампе = ObbyAntiTP (`Health=0` стр.286/347) и BeeEffect; при наших атрибутах `ClientObbyAntiTp=true` + валидный регион `check()` делает rebaseline и **не убивает** → подозрение: сервер (RigSync) или стражи (`Guard alert shown` в консоли). Усиление BypassDiag: **remote-тапы** `RigSync`/`MonsterEvent` RE → `REMOTE ...` в лог; **HP-ряд** (14 последних изменений Health) + `STATE Died` при смерти; **A/B print-test**: пульсация `AnticheatSuspendedRegion` при `ClientObbyAntiTpDebug=true/false` — выясняет ориентацию `if Debug then print` и оставляет рабочую → принты игра (`armed/flag/KILL`) пойдут в лог; счётчик `BypassDiagCapN`; VERSION → V26.2.3R, `luac5.1 -p` OK
-- [ ] **Практический тест убийцы**: перезапустить BypassDiag → умереть при ТП (1–2 раза) → я читаю `BypassDiagLog.txt` (DEATH + HP-ряд + REMOTE + KILL-строки) → определить клиент/сервер/стражи
+- [x] **Практический тест убийцы**: выполнен 18:54–18:56 — BypassDiag v3 поймал flag→KILL→DEATH и remote-тапы (см. V26.2.4R)
 
 ## Сделано — V26.2.2R (fix)
 

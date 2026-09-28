@@ -109,6 +109,10 @@ local function holdAttrs()
 		return
 	end
 	attrConn1 = Workspace:GetAttributeChangedSignal("ClientObbyAntiTp"):Connect(function()
+		local G = getgenv and getgenv() or _G
+		if G.BypassDiagAttrLock then
+			return
+		end
 		if antiOn and Workspace:GetAttribute("ClientObbyAntiTp") ~= true then
 			applyAttrs()
 		end
