@@ -92,16 +92,17 @@ else
 end
 
 local function stateRow()
-	if not L then
+	local LL = env.BypassLogic
+	if not LL then
 		return "нет логики", false
 	end
 	return ("enabled=%s safe=%s anti=%s guard=%s attr=%s"):format(
-		tostring(L.isEnabled()),
-		tostring(L.isSafeZone()),
-		tostring(L.isAntiTP()),
-		tostring(L.getGuardStatus()),
-		tostring(L.getAttrStatus())
-	), L.isSafeZone() == true
+		tostring(LL.isEnabled()),
+		tostring(LL.isSafeZone()),
+		tostring(LL.isAntiTP()),
+		tostring(LL.getGuardStatus()),
+		tostring(LL.getAttrStatus())
+	), LL.isSafeZone() == true
 end
 
 local v, s = stateRow()
@@ -176,6 +177,7 @@ end)
 local gui = Instance.new("ScreenGui")
 gui.Name = "BypassDiag"
 gui.ResetOnSpawn = false
+gui.DisplayOrder = 50
 pcall(function()
 	gui.Parent = game:GetService("CoreGui")
 end)
@@ -183,8 +185,14 @@ if not gui.Parent then
 	gui.Parent = env.PlayerGui or game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 end
 
+local vs = try(function()
+	return workspace.CurrentCamera.ViewportSize
+end, Vector2.new(800, 600))
+local winW = math.min(560, vs.X - 16)
+local winH = math.min(620, vs.Y - 24)
+
 local frame = Instance.new("Frame")
-frame.Size = UDim2.fromOffset(560, 620)
+frame.Size = UDim2.fromOffset(winW, winH)
 frame.AnchorPoint = Vector2.new(0.5, 0.5)
 frame.Position = UDim2.fromScale(0.5, 0.5)
 frame.BackgroundColor3 = Color3.fromRGB(15, 19, 29)
@@ -192,20 +200,53 @@ frame.BorderSizePixel = 0
 frame.Parent = gui
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
 
+local bar = Instance.new("TextButton")
+bar.Name = "Bar"
+bar.Size = UDim2.new(1, 0, 0, 28)
+bar.BackgroundTransparency = 1
+bar.AutoButtonColor = false
+bar.Text = ""
+bar.Parent = frame
+
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -20, 0, 24)
-title.Position = UDim2.fromOffset(10, 8)
+title.Size = UDim2.new(1, -70, 1, 0)
+title.Position = UDim2.fromOffset(10, 0)
 title.BackgroundTransparency = 1
 title.Text = "BypassDiag  ·  " .. tostring(GC and GC.VERSION or "GC нет")
 title.TextColor3 = Color3.fromRGB(0, 242, 254)
 title.Font = Enum.Font.GothamBold
-title.TextSize = 14
+title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
-title.Parent = frame
+title.TextTruncate = Enum.TextTruncate.AtEnd
+title.Parent = bar
+
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.fromOffset(24, 22)
+minBtn.Position = UDim2.new(1, -54, 0.5, -11)
+minBtn.BackgroundColor3 = Color3.fromRGB(38, 42, 52)
+minBtn.BorderSizePixel = 0
+minBtn.Text = "–"
+minBtn.TextColor3 = Color3.fromRGB(223, 226, 240)
+minBtn.Font = Enum.Font.GothamBold
+minBtn.TextSize = 14
+minBtn.Parent = bar
+Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 4)
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.fromOffset(24, 22)
+closeBtn.Position = UDim2.new(1, -26, 0.5, -11)
+closeBtn.BackgroundColor3 = Color3.fromRGB(147, 0, 10)
+closeBtn.BorderSizePixel = 0
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(255, 180, 180)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 12
+closeBtn.Parent = bar
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 4)
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -20, 1, -56)
-scroll.Position = UDim2.fromOffset(10, 36)
+scroll.Size = UDim2.new(1, -20, 1, -72)
+scroll.Position = UDim2.fromOffset(10, 32)
 scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 3
@@ -273,6 +314,8 @@ btnRow.Position = UDim2.new(0, 10, 1, -32)
 btnRow.BackgroundTransparency = 1
 btnRow.Parent = frame
 
+local bubble
+
 local function mkbtn(text, x, w, parent, cb)
 	local b = Instance.new("TextButton")
 	b.Size = UDim2.fromOffset(w, 26)
@@ -291,11 +334,13 @@ end
 
 mkbtn("Включить Bypass", 0, 130, btnRow, function()
 	local msg = "?"
-	if L then
-		local ok, err = pcall(L.enable)
-		msg = ok and ("включено guard=" .. tostring(L.getGuardStatus())) or ("ошибка: " .. tostring(err))
-	elseif W and type(W.SetOn) == "function" then
-		local ok, err = pcall(W.SetOn, true)
+	local LL = env.BypassLogic
+	local WW = env.BypassWindow
+	if LL then
+		local ok, err = pcall(LL.enable)
+		msg = ok and ("включено guard=" .. tostring(LL.getGuardStatus())) or ("ошибка: " .. tostring(err))
+	elseif WW and type(WW.SetOn) == "function" then
+		local ok, err = pcall(WW.SetOn, true)
 		msg = ok and "SetOn(true)" or ("ошибка: " .. tostring(err))
 	else
 		msg = "нет BypassLogic/BypassWindow"
@@ -309,6 +354,13 @@ mkbtn("Включить Bypass", 0, 130, btnRow, function()
 end)
 
 mkbtn("Обновить", 136, 90, btnRow, function()
+	GC = env.GlobalControler
+	L = env.BypassLogic
+	W = env.BypassWindow
+	findings[#findings + 1] = { cap = "GC (повторно)", val = GC and (tostring(GC.VERSION) .. "  running=" .. tostring(GC.Running)) or "НЕТ", status = GC ~= nil }
+	findings[#findings + 1] = { cap = "env.BypassLogic (повторно)", val = L and "есть" or "NIL", status = L ~= nil }
+	findings[#findings + 1] = { cap = "env.BypassWindow (повторно)", val = W and "есть" or "NIL", status = W ~= nil }
+	title.Text = "BypassDiag  ·  " .. tostring(GC and GC.VERSION or "GC нет")
 	local v2, s2 = stateRow()
 	findings[#findings + 1] = { cap = "Состояние (повторно)", val = v2, status = s2 }
 	local f2, p2 = scanGuard()
@@ -316,8 +368,68 @@ mkbtn("Обновить", 136, 90, btnRow, function()
 	render()
 end)
 
-mkbtn("Закрыть", 232, 80, btnRow, function()
+mkbtn("Свернуть", 232, 84, btnRow, function()
+	frame.Visible = false
+	bubble.Visible = true
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
 	gui:Destroy()
+end)
+
+bubble = Instance.new("TextButton")
+bubble.Name = "BypassDiag"
+bubble.Size = UDim2.fromOffset(52, 32)
+bubble.Position = UDim2.new(0, 10, 0, 10)
+bubble.BackgroundColor3 = Color3.fromRGB(15, 19, 29)
+bubble.BorderSizePixel = 0
+bubble.Text = "Diag"
+bubble.TextColor3 = Color3.fromRGB(0, 242, 254)
+bubble.Font = Enum.Font.GothamBold
+bubble.TextSize = 12
+bubble.Visible = false
+bubble.Parent = gui
+Instance.new("UICorner", bubble).CornerRadius = UDim.new(0, 6)
+bubble.MouseButton1Click:Connect(function()
+	frame.Visible = true
+	bubble.Visible = false
+end)
+minBtn.MouseButton1Click:Connect(function()
+	frame.Visible = false
+	bubble.Visible = true
+end)
+
+local UIS = game:GetService("UserInputService")
+local dragging = false
+local grab = nil
+bar.InputBegan:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1
+		and input.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+	dragging = true
+	local abs = frame.AbsolutePosition
+	frame.AnchorPoint = Vector2.new(0, 0)
+	frame.Position = UDim2.fromOffset(abs.X, abs.Y)
+	grab = Vector2.new(input.Position.X, input.Position.Y) - abs
+end)
+UIS.InputChanged:Connect(function(input)
+	if not dragging then
+		return
+	end
+	if input.UserInputType ~= Enum.UserInputType.MouseMovement
+		and input.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+	local x = math.clamp(input.Position.X - grab.X, -winW + 60, vs.X - 60)
+	local y = math.clamp(input.Position.Y - grab.Y, 0, vs.Y - 40)
+	frame.Position = UDim2.fromOffset(x, y)
+end)
+UIS.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = false
+	end
 end)
 
 for _, f in ipairs(findings) do
