@@ -185,7 +185,8 @@ end
 
 local frame = Instance.new("Frame")
 frame.Size = UDim2.fromOffset(560, 620)
-frame.Position = UDim2.new(0.5, -280, 0.5, -310)
+frame.AnchorPoint = Vector2.new(0.5, 0.5)
+frame.Position = UDim2.fromScale(0.5, 0.5)
 frame.BackgroundColor3 = Color3.fromRGB(15, 19, 29)
 frame.BorderSizePixel = 0
 frame.Parent = gui
