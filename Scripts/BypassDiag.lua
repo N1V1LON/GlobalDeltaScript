@@ -54,6 +54,7 @@ local function capturePrint(tag, ...)
 	end
 	local line = table.concat(parts, " ")
 	if line:find("ObbyAntiTP", 1, true) or line:find("KILL", 1, true) then
+		G.BypassDiagCapN = (G.BypassDiagCapN or 0) + 1
 		log(tag .. line)
 	end
 end
@@ -408,7 +409,12 @@ local function hookDeath(char)
 		return
 	end
 	hum:SetAttribute("DiagHooked", true)
+	local hpHist = {}
 	hum.HealthChanged:Connect(function(h)
+		hpHist[#hpHist + 1] = string.format("%.1fs hp=%.0f", os.clock(), h)
+		if #hpHist > 14 then
+			table.remove(hpHist, 1)
+		end
 		if h > 0 then
 			return
 		end
@@ -428,6 +434,14 @@ local function hookDeath(char)
 		findings[#findings + 1] = { cap = "Смерть #" .. deathN .. " " .. os.date("%H:%M:%S"), val = info, status = false }
 		warn("[BypassDiag] DEATH #" .. deathN .. " " .. info)
 		log("DEATH #" .. deathN .. " " .. info)
+		log("HP-ряд #" .. deathN .. ": " .. table.concat(hpHist, " → "))
+		pcall(function()
+			hum.StateChanged:Connect(function(_, ns)
+				if ns == Enum.HumanoidStateType.Dead then
+					log("STATE Died #" .. deathN)
+				end
+			end)
+		end)
 		if debug and debug.traceback then
 			local tb = try(function()
 				return debug.traceback("", 2)
@@ -446,6 +460,114 @@ pcall(function()
 	if LP.Character then
 		hookDeath(LP.Character)
 	end
+end)
+
+if not G.BypassDiagRemotes then
+	G.BypassDiagRemotes = true
+	local ok, err = pcall(function()
+		local RS = game:GetService("ReplicatedStorage")
+		local Remotes = require(RS:WaitForChild("Shared"):WaitForChild("Remotes", 10))
+		local tapped = 0
+		local function tapOne(path, name, r)
+			if typeof(r) ~= "Instance" or not r:IsA("RemoteEvent") then
+				return
+			end
+			r.OnClientEvent:Connect(function(...)
+				local parts = {}
+				for i = 1, select("#", ...) do
+					parts[i] = tostring((select(i, ...)))
+				end
+				local s = table.concat(parts, " ")
+				if #s > 200 then
+					s = s:sub(1, 200) .. "..."
+				end
+				log(("REMOTE %s.%s: %s"):format(path, name, s))
+			end)
+			tapped = tapped + 1
+		end
+		local function tap(container, path)
+			if typeof(container) == "Instance" then
+				for _, r in ipairs(container:GetChildren()) do
+					tapOne(path, r.Name, r)
+				end
+			elseif type(container) == "table" then
+				for k, r in pairs(container) do
+					tapOne(path, tostring(k), r)
+				end
+			end
+		end
+		tap(Remotes.RigSync, "RigSync")
+		tap(Remotes.MonsterEvent, "MonsterEvent")
+		add("Remote-тапы", tostring(tapped) .. " RE", tapped > 0)
+	end)
+	if not ok then
+		add("Remote-тапы", "ошибка: " .. tostring(err), false)
+	end
+else
+	add("Remote-тапы", "уже были с прошлого запуска", true)
+end
+render()
+
+task.spawn(function()
+	if G.BypassDiagAB then
+		return
+	end
+	G.BypassDiagAB = true
+	local WS = game:GetService("Workspace")
+	local SAFE = "-100000,-100000,-100000,100000,100000,100000"
+	local function pulse()
+		pcall(function()
+			WS:SetAttribute("AnticheatSuspendedRegion", "1,1,1,2,2,2")
+		end)
+		task.wait(0)
+		pcall(function()
+			WS:SetAttribute("AnticheatSuspendedRegion", SAFE)
+		end)
+		task.wait(0.2)
+	end
+	local function capN()
+		return G.BypassDiagCapN or 0
+	end
+	pcall(function()
+		WS:SetAttribute("ClientObbyAntiTpDebug", true)
+	end)
+	local n0 = capN()
+	pulse()
+	local gotTrue = capN() - n0
+	pcall(function()
+		WS:SetAttribute("ClientObbyAntiTpDebug", false)
+	end)
+	local n1 = capN()
+	pulse()
+	local gotFalse = capN() - n1
+	local verdict
+	if gotTrue > 0 then
+		verdict = "включается Debug=true"
+		pcall(function()
+			WS:SetAttribute("ClientObbyAntiTpDebug", true)
+		end)
+	elseif gotFalse > 0 then
+		verdict = "печатает всегда (Debug мешает)"
+		pcall(function()
+			WS:SetAttribute("ClientObbyAntiTpDebug", false)
+		end)
+	else
+		verdict = "НЕ ПЕЧАТАЕТ (Start не отработал?)"
+		pcall(function()
+			WS:SetAttribute("ClientObbyAntiTpDebug", true)
+		end)
+	end
+	local msg = ("Debug=true→%d, Debug=false→%d · %s"):format(gotTrue, gotFalse, verdict)
+	log("print-test: " .. msg)
+	findings[#findings + 1] = { cap = "ObbyAntiTP print-test", val = msg, status = gotTrue + gotFalse > 0 }
+	findings[#findings + 1] = {
+		cap = "Атрибут ClientObbyAntiTpDebug",
+		val = tostring(try(function()
+			return WS:GetAttribute("ClientObbyAntiTpDebug")
+		end, "nil")),
+		status = nil,
+	}
+	render()
 end)
 
 local btnRow = Instance.new("Frame")

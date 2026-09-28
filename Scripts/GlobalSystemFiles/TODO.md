@@ -1,5 +1,10 @@
 # TODO
 
+## Сделано — V26.2.3R (fix)
+
+- [x] **V26.2.3R: BypassDiag — захват убийцы при ТП** — скрины 17:57 прочитаны полностью (10/10): все находки зелёные, **0 смертей и 0 строк `[ObbyAntiTP]` в логе** (хук print поздний — печати `Start` прошли до запуска диага); декомпиляция `Kernel.client.lua`: `bootController` поднимает **все** контроллеры `Controllers.Game` (ObbyAntiTP стартует); единственные клиентские убийцы в дампе = ObbyAntiTP (`Health=0` стр.286/347) и BeeEffect; при наших атрибутах `ClientObbyAntiTp=true` + валидный регион `check()` делает rebaseline и **не убивает** → подозрение: сервер (RigSync) или стражи (`Guard alert shown` в консоли). Усиление BypassDiag: **remote-тапы** `RigSync`/`MonsterEvent` RE → `REMOTE ...` в лог; **HP-ряд** (14 последних изменений Health) + `STATE Died` при смерти; **A/B print-test**: пульсация `AnticheatSuspendedRegion` при `ClientObbyAntiTpDebug=true/false` — выясняет ориентацию `if Debug then print` и оставляет рабочую → принты игра (`armed/flag/KILL`) пойдут в лог; счётчик `BypassDiagCapN`; VERSION → V26.2.3R, `luac5.1 -p` OK
+- [ ] **Практический тест убийцы**: перезапустить BypassDiag → умереть при ТП (1–2 раза) → я читаю `BypassDiagLog.txt` (DEATH + HP-ряд + REMOTE + KILL-строки) → определить клиент/сервер/стражи
+
 ## Сделано — V26.2.2R (fix)
 
 - [x] **V26.2.2R: hot-reload bump** — `BypassLogic.isOurs`/`getPatchedCount` + честный детект патча в BypassDiag (Delta не даёт `debug.getupvalue` → строка «патченных: 0» была false-negative), GUI BypassDiag (вписывается/drag/свернуть); VERSION V26.2.2R, чтобы повторный Execute GlobalControler перезагрузил EMBEDDED; EMBEDDED 18, `luac5.1 -p` OK
