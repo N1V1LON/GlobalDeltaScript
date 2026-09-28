@@ -14,6 +14,72 @@ local function try(fn, def)
 	return def
 end
 
+local G = getgenv and getgenv() or _G
+G.BypassDiagLog = G.BypassDiagLog or {}
+local events = G.BypassDiagLog
+local flushQueued = false
+
+local function flush()
+	local lines = {}
+	for _, e in ipairs(events) do
+		lines[#lines + 1] = e
+	end
+	lines[#lines + 1] = "--- FINDINGS ---"
+	for _, f in ipairs(findings) do
+		lines[#lines + 1] = f.cap .. " = " .. f.val
+	end
+	local ok, err = pcall(writefile, "BypassDiagLog.txt", table.concat(lines, "\n"))
+	if not ok then
+		warn("[BypassDiag] log write failed: " .. tostring(err))
+	end
+end
+
+local function log(s)
+	events[#events + 1] = os.date("%H:%M:%S") .. "  " .. s
+	if not flushQueued then
+		flushQueued = true
+		task.delay(0.4, function()
+			flushQueued = false
+			flush()
+		end)
+	end
+end
+
+log("=== BypassDiag start PlaceId=" .. tostring(game.PlaceId) .. " GameId=" .. tostring(game.GameId) .. " ===")
+
+local function capturePrint(tag, ...)
+	local parts = {}
+	for i = 1, select("#", ...) do
+		parts[i] = tostring((select(i, ...)))
+	end
+	local line = table.concat(parts, " ")
+	if line:find("ObbyAntiTP", 1, true) or line:find("KILL", 1, true) then
+		log(tag .. line)
+	end
+end
+
+if not G.BypassDiagHooked then
+	G.BypassDiagHooked = true
+	pcall(function()
+		local oldPrint
+		oldPrint = hookfunction(print, function(...)
+			capturePrint("[print] ", ...)
+			if oldPrint then
+				return oldPrint(...)
+			end
+		end)
+	end)
+	pcall(function()
+		local oldWarn
+		oldWarn = hookfunction(warn, function(...)
+			capturePrint("[warn] ", ...)
+			if oldWarn then
+				return oldWarn(...)
+			end
+		end)
+	end)
+end
+
 local GC = env.GlobalControler
 local L = env.BypassLogic
 local W = env.BypassWindow
@@ -331,6 +397,7 @@ local function render()
 	for i, f in ipairs(findings) do
 		row(scroll, f.cap, f.val, f.status, i)
 	end
+	pcall(flush)
 end
 render()
 
@@ -360,6 +427,7 @@ local function hookDeath(char)
 		)
 		findings[#findings + 1] = { cap = "Смерть #" .. deathN .. " " .. os.date("%H:%M:%S"), val = info, status = false }
 		warn("[BypassDiag] DEATH #" .. deathN .. " " .. info)
+		log("DEATH #" .. deathN .. " " .. info)
 		if debug and debug.traceback then
 			local tb = try(function()
 				return debug.traceback("", 2)
@@ -418,6 +486,7 @@ mkbtn("Включить Bypass", 0, 130, btnRow, function()
 		msg = "нет BypassLogic/BypassWindow"
 	end
 	findings[#findings + 1] = { cap = "Пробное включение", val = msg, status = msg:sub(1, 3) ~= "оши" }
+	log("enable: " .. msg)
 	local v2, s2 = stateRow()
 	findings[#findings + 1] = { cap = "Состояние после", val = v2, status = s2 }
 	local f2, p2 = scanGuard()
