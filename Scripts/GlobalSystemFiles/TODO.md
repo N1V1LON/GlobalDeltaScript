@@ -1,5 +1,9 @@
 # TODO
 
+## Сделано — V26.2.2R (fix)
+
+- [x] **V26.2.2R: hot-reload bump** — `BypassLogic.isOurs`/`getPatchedCount` + честный детект патча в BypassDiag (Delta не даёт `debug.getupvalue` → строка «патченных: 0» была false-negative), GUI BypassDiag (вписывается/drag/свернуть); VERSION V26.2.2R, чтобы повторный Execute GlobalControler перезагрузил EMBEDDED; EMBEDDED 18, `luac5.1 -p` OK
+
 ## Сделано — V26.2.1R (fix)
 
 - [x] **V26.2.1R: fix Bypass «сломалось снова» — усиление + диагностика** — анализ: runtime-конфиг `Workspace/Scripts/GlobalSystemFiles/Config.json` (Base="Scripts/", перезаписан сегодня 09:10) хранит `BypassWindow {enabled:true, antiTP:true, safeZone:false}` — **safeZone в сохранённом состоянии выключен** (а это и есть обход); `BypassLogic` переписан: убран одноразовый `patchGuard`+`guardPatched` навсегда → `scanAndPatch()` пере-сканирует `getgc(true)` каждые 2с пока safeOn, патчит **ВСЕ** guard-таблицы (`patched[t]=wrapped`) и перепатчит, если игра перезаписала `AllowsLocalUse` (пересозданные/множественные guard-таблицы — вероятная причина «работало → отвалилось»); `getGuardStatus` = patchedCount>0; новый **`Scripts/BypassDiag.lua`** — диагностический GUI (PlaceId vs 107778070777162, Base, вхождение BypassWindow в Modules/Skipped, Errors, ResolveScope/Places/ScopeAllows, Config-запись, состояние L, атрибуты Workspace, guard-скан с детектом нашего патча по upvalue `safeOn`, кнопки «Включить Bypass»/«Обновить»); VERSION → V26.2.1R (hot-reload при повторном Execute), EMBEDDED 18 sync, `luac5.1 -p` OK

@@ -1,7 +1,7 @@
 # GlobalDeltaScript
 
 Хаб **GlobalControler** для Delta executor (Roblox).  
-Версия: **V26.2.1R** · язык UI: RU/EN · логика GS, GUI GM.
+Версия: **V26.2.2R** · язык UI: RU/EN · логика GS, GUI GM.
 
 ## Установка (одна строка)
 

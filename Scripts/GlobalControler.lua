@@ -1,5 +1,5 @@
 local env = getgenv and getgenv() or _G
-local VERSION = "V26.2.1R"
+local VERSION = "V26.2.2R"
 
 local MODULE_NAMES = {
 	"SpeedLogic", "TPLogic", "NoclipLogic", "JumpLogic", "SpoofingLogic",
