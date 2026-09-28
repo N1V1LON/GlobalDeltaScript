@@ -55,6 +55,10 @@ local function capturePrint(tag, ...)
 	local line = table.concat(parts, " ")
 	if line:find("ObbyAntiTP", 1, true) or line:find("KILL", 1, true) then
 		G.BypassDiagCapN = (G.BypassDiagCapN or 0) + 1
+		if line:find("flag #", 1, true) then
+			G.BypassDiagFlagN = (G.BypassDiagFlagN or 0) + 1
+			G.BypassDiagLagWin = os.clock()
+		end
 		log(tag .. line)
 	end
 end
@@ -436,6 +440,14 @@ local function hookDeath(char)
 		warn("[BypassDiag] DEATH #" .. deathN .. " " .. info)
 		log("DEATH #" .. deathN .. " " .. info)
 		log("HP-ряд #" .. deathN .. ": " .. table.concat(hpHist, " → "))
+		if (deathN == 1 or deathN % 10 == 0) and G.BypassDiagREBuf and #G.BypassDiagREBuf > 0 then
+			local from = math.max(1, #G.BypassDiagREBuf - 29)
+			local slice = {}
+			for i = from, #G.BypassDiagREBuf do
+				slice[#slice + 1] = G.BypassDiagREBuf[i]
+			end
+			log("REM-BUF@death" .. deathN .. ": " .. table.concat(slice, " || "))
+		end
 		pcall(function()
 			hum.StateChanged:Connect(function(_, ns)
 				if ns == Enum.HumanoidStateType.Dead then
@@ -469,37 +481,68 @@ if not G.BypassDiagRemotes then
 		local RS = game:GetService("ReplicatedStorage")
 		local Remotes = require(RS:WaitForChild("Shared"):WaitForChild("Remotes", 10))
 		local tapped = 0
+		local seen = {}
+		G.BypassDiagREBuf = G.BypassDiagREBuf or {}
+		local buf = G.BypassDiagREBuf
+		local IMPORTANT = { "kill", "punish", "damage", "death", "correct", "reconcile", "flag", "moderat", "ban", "locate", "teleport", "lag", "reloc", "refresh", "speed", "position" }
+		local function push(path, name, s)
+			local key = path .. "." .. name
+			buf[#buf + 1] = os.date("%H:%M:%S") .. " " .. key .. ": " .. s
+			if #buf > 60 then
+				table.remove(buf, 1)
+			end
+			local low = name:lower()
+			for _, w in ipairs(IMPORTANT) do
+				if low:find(w, 1, true) then
+					log("REMOTE-ВАЖНЫЙ " .. key .. ": " .. s)
+					return
+				end
+			end
+		end
 		local function tapOne(path, name, r)
-			if typeof(r) ~= "Instance" or not r:IsA("RemoteEvent") then
+			if typeof(r) ~= "Instance" or not r:IsA("RemoteEvent") or seen[r] then
 				return
 			end
+			seen[r] = true
 			r.OnClientEvent:Connect(function(...)
 				local parts = {}
 				for i = 1, select("#", ...) do
 					parts[i] = tostring((select(i, ...)))
 				end
 				local s = table.concat(parts, " ")
-				if #s > 200 then
-					s = s:sub(1, 200) .. "..."
+				if #s > 160 then
+					s = s:sub(1, 160) .. "..."
 				end
-				log(("REMOTE %s.%s: %s"):format(path, name, s))
+				push(path, name, s)
 			end)
 			tapped = tapped + 1
 		end
-		local function tap(container, path)
-			if typeof(container) == "Instance" then
-				for _, r in ipairs(container:GetChildren()) do
-					tapOne(path, r.Name, r)
+		local function walk(node, path, depth)
+			if depth > 4 then
+				return
+			end
+			if typeof(node) == "Instance" then
+				if node:IsA("RemoteEvent") then
+					tapOne(path, node.Name, node)
+				else
+					for _, ch in ipairs(node:GetChildren()) do
+						walk(ch, path .. "." .. ch.Name, depth + 1)
+					end
 				end
-			elseif type(container) == "table" then
-				for k, r in pairs(container) do
-					tapOne(path, tostring(k), r)
+			elseif type(node) == "table" then
+				if seen[node] then
+					return
+				end
+				seen[node] = true
+				for k, v in pairs(node) do
+					if type(k) == "string" or type(k) == "number" then
+						walk(v, path .. "." .. tostring(k), depth + 1)
+					end
 				end
 			end
 		end
-		tap(Remotes.RigSync, "RigSync")
-		tap(Remotes.MonsterEvent, "MonsterEvent")
-		add("Remote-тапы", tostring(tapped) .. " RE", tapped > 0)
+		walk(Remotes, "Remotes", 0)
+		add("Remote-тапы", tostring(tapped) .. " RE (буфер 60)", tapped > 0)
 	end)
 	if not ok then
 		add("Remote-тапы", "ошибка: " .. tostring(err), false)
@@ -556,6 +599,19 @@ if not G.BypassDiagNC and hookmetamethod and getnamecallmethod then
 					end
 				end
 				return old(self, ...)
+			elseif m == "PivotTo" then
+				local win = G.BypassDiagLagWin
+				if win and os.clock() - win < 0.45 and typeof(self) == "Instance" then
+					local LP = game:GetService("Players").LocalPlayer
+					local ch = LP and LP.Character
+					if ch and self == ch then
+						G.BypassDiagLagWin = nil
+						G.BypassDiagPivotBlocked = (G.BypassDiagPivotBlocked or 0) + 1
+						log("LAG-BLOCK PivotTo #" .. G.BypassDiagPivotBlocked .. " (ObbyAntiTP lagback пойман)")
+						return nil
+					end
+				end
+				return old(self, ...)
 			end
 			return old(self, ...)
 		end)
@@ -575,10 +631,34 @@ end
 task.spawn(function()
 	local hit = nil
 	pcall(function()
-		for _, d in ipairs(game:GetService("ReplicatedFirst"):GetDescendants()) do
-			if d.Name == "ContentCatalog" then
-				hit = d
-				break
+		if type(getloadedmodules) == "function" then
+			for _, m in ipairs(getloadedmodules()) do
+				local n = tostring(m.Name):lower()
+				if n:find("contentcatalog", 1, true) or n:find("ugi", 1, true) or n:find("catalog", 1, true) then
+					log("getloadedmodules hit: " .. tostring(m.Name) .. " (" .. tostring(m.ClassName) .. ")")
+					hit = hit or m
+				end
+			end
+		end
+	end)
+	pcall(function()
+		if type(getscripts) == "function" then
+			for _, s in ipairs(getscripts()) do
+				local n = tostring(s.Name):lower()
+				if n:find("contentcatalog", 1, true) or n:find("ugi", 1, true) then
+					log("getscripts hit: " .. tostring(s.Name) .. " (" .. tostring(s.ClassName) .. ")")
+					hit = hit or s
+				end
+			end
+		end
+	end)
+	pcall(function()
+		if not hit then
+			for _, d in ipairs(game:GetService("ReplicatedFirst"):GetDescendants()) do
+				if d.Name == "ContentCatalog" then
+					hit = d
+					break
+				end
 			end
 		end
 	end)
@@ -623,11 +703,15 @@ task.spawn(function()
 	end
 	local G2 = getgenv and getgenv() or _G
 	add("Ревайв-счётчики", "revives=" .. tostring(G2.BLRevives or 0) .. " suppressed-Dead=" .. tostring(G2.BLDeadSuppressed or 0))
+	add("Лагбэк-блок", "PivotTo блок.: " .. tostring(G2.BypassDiagPivotBlocked or 0) .. " · flag: " .. tostring(G2.BypassDiagFlagN or 0), (G2.BypassDiagPivotBlocked or 0) > 0)
 	render()
 end)
 render()
 
 task.spawn(function()
+	pcall(function()
+		game:GetService("Workspace"):SetAttribute("ClientObbyAntiTpDebug", true)
+	end)
 	if G.BypassDiagAB then
 		return
 	end
@@ -769,7 +853,7 @@ mkbtn("ТП: attr=false", 0, 100, btnRow2, function()
 	local v = tostring(game:GetService("Workspace"):GetAttribute("ClientObbyAntiTp"))
 	findings[#findings + 1] = {
 		cap = "Эксперимент attr=false",
-		val = "attr=" .. v .. " guard=LOCK → жми «Симуляция ТП»",
+		val = "attr=" .. v .. " guard=LOCK → жми «Авто-тест»",
 		status = nil,
 	}
 	log("EXPERIMENT: attr=false lock=true → " .. v)
@@ -791,20 +875,70 @@ mkbtn("ТП: attr=true", 104, 92, btnRow2, function()
 	render()
 end)
 
-mkbtn("Симуляция ТП", 200, 96, btnRow2, function()
-	local ok, err = pcall(function()
-		local char = game:GetService("Players").LocalPlayer.Character
-		local hrp = char and char:FindFirstChild("HumanoidRootPart")
-		assert(hrp, "нет HumanoidRootPart")
-		hrp.CFrame = hrp.CFrame * CFrame.new(200, 0, 0)
+mkbtn("Авто-тест", 200, 96, btnRow2, function()
+	if G.BypassDiagAT then
+		findings[#findings + 1] = { cap = "Авто-тест", val = "уже идёт", status = nil }
+		render()
+		return
+	end
+	G.BypassDiagAT = true
+	task.spawn(function()
+		local WS = game:GetService("Workspace")
+		local function sim()
+			local char = game:GetService("Players").LocalPlayer.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			if not hrp then
+				return false, "нет HumanoidRootPart"
+			end
+			hrp.CFrame = hrp.CFrame * CFrame.new(200, 0, 0)
+			return true
+		end
+		local function flagN()
+			return G.BypassDiagFlagN or 0
+		end
+		G.BypassDiagAttrLock = true
+		pcall(function()
+			WS:SetAttribute("ClientObbyAntiTp", false)
+		end)
+		log("AUTO-TEST: фаза A attr=false")
+		local a0 = flagN()
+		local okA, errA = sim()
+		task.wait(1.5)
+		local a1 = flagN() - a0
+		G.BypassDiagAttrLock = false
+		pcall(function()
+			WS:SetAttribute("ClientObbyAntiTp", true)
+		end)
+		log("AUTO-TEST: фаза B attr=true")
+		local b0 = flagN()
+		local okB, errB = sim()
+		task.wait(1.5)
+		local b1 = flagN() - b0
+		local verdict
+		if a1 == 0 and b1 > 0 then
+			verdict = "attr=false ВЫКЛЮЧАЕТ чек → оставляю false"
+			G.BypassDiagAttrLock = true
+			pcall(function()
+				WS:SetAttribute("ClientObbyAntiTp", false)
+			end)
+		elseif a1 > 0 and b1 > 0 then
+			verdict = "чек работает при обоих → атрибут не влияет"
+		elseif a1 == 0 and b1 == 0 then
+			verdict = "флагов нет вообще"
+		else
+			verdict = "неожиданно: проверь Debug-атрибут"
+		end
+		local msg = ("flag: attr=false→%d, attr=true→%d · %s"):format(a1, b1, verdict)
+		log("AUTO-TEST: " .. msg)
+		findings[#findings + 1] = { cap = "Авто-тест чека", val = msg, status = a1 == 0 }
+		findings[#findings + 1] = {
+			cap = "Симуляции TP",
+			val = (okA and "A ok" or ("A: " .. tostring(errA))) .. " / " .. (okB and "B ok" or ("B: " .. tostring(errB))),
+			status = okA and okB,
+		}
+		G.BypassDiagAT = false
+		render()
 	end)
-	findings[#findings + 1] = {
-		cap = "Симуляция ТП",
-		val = ok and "+200 по X → смотри flag/KILL/DEATH в логе" or ("ошибка: " .. tostring(err)),
-		status = ok or false,
-	}
-	log("SIM-TP: " .. (ok and "+200 X" or tostring(err)))
-	render()
 end)
 
 local LLr = env.BypassLogic

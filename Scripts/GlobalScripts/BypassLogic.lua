@@ -49,7 +49,7 @@ local function hookRevive(char)
 				reviveCount = 0
 			end
 			reviveCount = reviveCount + 1
-			if reviveCount > 20 then
+			if reviveCount > 500 then
 				return
 			end
 			local G = getgenv and getgenv() or _G
