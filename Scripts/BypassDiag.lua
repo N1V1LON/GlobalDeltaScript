@@ -121,6 +121,7 @@ end, false))
 
 local function scanGuard()
 	local found, patchedN = 0, 0
+	local LL = env.BypassLogic
 	try(function()
 		for _, g in getgc(true) do
 			if type(g) == "table" then
@@ -129,7 +130,10 @@ local function scanGuard()
 				if type(a) == "function" and type(b) == "function" then
 					found = found + 1
 					local ours = false
-					if debug and debug.getupvalue then
+					if LL and type(LL.isOurs) == "function" then
+						ours = LL.isOurs(g) == true
+					end
+					if not ours and debug and debug.getupvalue then
 						local i = 1
 						while true do
 							local name = debug.getupvalue(a, i)

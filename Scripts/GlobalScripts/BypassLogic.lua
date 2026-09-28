@@ -153,6 +153,17 @@ function BypassLogic.getGuardStatus()
 	return "waiting"
 end
 
+function BypassLogic.isOurs(t)
+	if type(t) ~= "table" then
+		return false
+	end
+	return patched[t] ~= nil and patched[t] == rawget(t, "AllowsLocalUse")
+end
+
+function BypassLogic.getPatchedCount()
+	return patchedCount()
+end
+
 function BypassLogic.getAttrStatus()
 	if not antiOn then
 		return false
